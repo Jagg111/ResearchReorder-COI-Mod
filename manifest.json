@@ -1,13 +1,14 @@
 {
 	"id": "ResearchReorder",
 	"version": "0.0.1",
+	"display_name": "Research Reorder",
+	"description_short": "Lets players reorder their research queue.",
 	"primary_dlls": [ "ResearchReorder.dll" ],
 	"non_locking_dll_load": true,
+	"can_add_to_saved_game": true,
+	"can_remove_from_saved_game": true,
 	"authors": [ "Jagg111" ],
 	"links": [],
 	"min_game_version": "0.4.0",
-	"last_verified_game_version": "0.8.2",
-	"dependencies": [],
-	"optional_dependencies": [],
-	"description": "Lets players reorder their research queue."
+	"max_verified_game_version": "0.8.2c"
 }

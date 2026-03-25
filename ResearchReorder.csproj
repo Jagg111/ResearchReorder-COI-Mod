@@ -63,6 +63,9 @@
 		<Reference Include="UnityEngine.CoreModule">
 			<HintPath>$(COI_ROOT)\Captain of Industry_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
 		</Reference>
+		<Reference Include="UnityEngine.UIElementsModule">
+			<HintPath>$(COI_ROOT)\Captain of Industry_Data\Managed\UnityEngine.UIElementsModule.dll</HintPath>
+		</Reference>
 	</ItemGroup>
 
 	<Target Name="CheckCoiRoot" BeforeTargets="ResolveAssemblyReferences">
