@@ -38,10 +38,10 @@ Phased, iterative development. Each phase is a small testable increment verified
 - [x] Verify in-game: window shows queue items matching 1:1 with the native tooltip that shows the queue when hovering over the beaker & research buttons in the UI
 
 ### Phase 3c: Add up/down reorder buttons
-- [ ] Add move-up / move-down buttons next to each queue item
-- [ ] Wire buttons to `PopAt` + `EnqueueAt` via reorder helper
-- [ ] Rebuild list after each move
-- [ ] Verify in-game: buttons reorder queue, tooltip confirms new order
+- [x] Add move-up / move-down buttons next to each queue item
+- [x] Wire buttons to `PopAt` + `EnqueueAt` via reorder helper
+- [x] Rebuild list after each move
+- [x] Verify in-game: buttons reorder queue, tooltip confirms new order
 
 ### Phase 3d: Polish
 - [ ] Handle edge cases: empty queue, single item
@@ -66,6 +66,8 @@ Phased, iterative development. Each phase is a small testable increment verified
 **Phase 3a: COMPLETE** — Blank "Research Queue" panel renders on screen. Uses `PanelWithHeader` + `IToolbarItemController` + `ToolbarHud`. F9 toggles visibility. Toolbar button appears in bottom bar when window is active.
 
 **Phase 3b: COMPLETE** — Queue items display as numbered text list with human-readable names. Uses `ScrollColumn` + `Display` labels, `Proto.Strings.Name.TranslatedString` for display names. Controller injects `ResearchManager`, reads queue via reflection, refreshes on `Activate()`. Verified in-game: 4-item queue matches tooltip exactly. Note: text renders ALL CAPS due to game's default `Display` styling — cosmetic fix deferred to Phase 3d.
+
+**Phase 3c: COMPLETE** — Each queue item is now a `Row` with a text label + ▲/▼ `ButtonText` buttons. First item hides ▲, last item hides ▼. Buttons call `MoveItem(fromIndex, toIndex)` which uses `PopAt` + `EnqueueAt` on the reflected queue, then refreshes the display. Verified in-game: buttons reorder the actual game queue correctly.
 
 ## Phase Details
 

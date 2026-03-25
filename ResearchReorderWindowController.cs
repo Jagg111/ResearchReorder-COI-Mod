@@ -15,7 +15,7 @@ namespace ResearchReorder;
 
 /// <summary>
 /// Controller that manages the Research Queue window visibility.
-/// Reads the research queue and populates the view on activation.
+/// Reads the research queue, populates the view, and handles reorder requests.
 /// </summary>
 [GlobalDependency(RegistrationMode.AsEverything)]
 public class ResearchReorderWindowController : IToolbarItemController {
@@ -47,6 +47,9 @@ public class ResearchReorderWindowController : IToolbarItemController {
 			Log.Error("ResearchReorder: Could not find m_researchQueue field!");
 		}
 
+		// Wire up the view's move callback to our reorder logic
+		_view.OnMoveRequested = MoveItem;
+
 		toolbar.AddMainMenuButton(
 			new LocStrFormatted("Research Queue"),
 			this,
@@ -77,6 +80,27 @@ public class ResearchReorderWindowController : IToolbarItemController {
 
 	public bool InputUpdate() {
 		return false;
+	}
+
+	/// <summary>
+	/// Moves a queue item from one position to another using PopAt + EnqueueAt,
+	/// then refreshes the display.
+	/// </summary>
+	private void MoveItem(int fromIndex, int toIndex) {
+		if (_queueField == null) return;
+
+		var queue = (Queueue<ResearchNode>)_queueField.GetValue(_researchMgr);
+
+		if (fromIndex < 0 || fromIndex >= queue.Count || toIndex < 0 || toIndex >= queue.Count) {
+			Log.Warning($"ResearchReorder: Invalid move {fromIndex} -> {toIndex} (queue size {queue.Count})");
+			return;
+		}
+
+		var item = queue.PopAt(fromIndex);
+		queue.EnqueueAt(item, toIndex);
+		Log.Info($"ResearchReorder: Moved '{item.Proto.Strings.Name.TranslatedString}' from {fromIndex} to {toIndex}");
+
+		RefreshQueueDisplay();
 	}
 
 	private void RefreshQueueDisplay() {
