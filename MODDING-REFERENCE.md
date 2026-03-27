@@ -4,9 +4,29 @@ Technical deep-dive on game APIs and modding patterns for **Update 4 (v0.8.2c)**
 
 > **Note on COI-Extended:** We initially used the COI-Extended mod as a reference, but it was built for an older game version. Its `IMod` constructor signature, UI base classes (`WindowView`, `BaseWindowController<T>`, `IToolbarItemInputController`), and other patterns either don't compile or don't exist in Update 4. We no longer use it as a reference — all patterns below are verified against the current game DLLs.
 
-## Game API — Research System
+## DLL Inspection Tools
 
 Game install path: `C:\Program Files (x86)\Steam\steamapps\common\Captain of Industry`
+Game DLLs: `<game>/Captain of Industry_Data/Managed/` (`Mafi.dll`, `Mafi.Core.dll`, `Mafi.Unity.dll`)
+
+**ILSpy CLI** (`ilspycmd`) — installed globally via `dotnet tool install -g ilspycmd`. Decompiles game types to readable C# source. Essential for understanding how native UI is built.
+
+```bash
+# Decompile a specific type (fully qualified name)
+ilspycmd "path/to/Mafi.Unity.dll" -t Mafi.Unity.Ui.Research.ResearchDetailUi
+
+# Use with COI_ROOT env var
+ilspycmd "$(cygpath -w "$COI_ROOT/Captain of Industry_Data/Managed/Mafi.Unity.dll")" -t Some.Type.Name
+```
+
+**PowerShell reflection** — for quick constructor/field/method checks without full decompilation:
+```powershell
+$asm = [System.Reflection.Assembly]::LoadFrom("path/to/Mafi.Unity.dll")
+$type = $asm.GetType('Mafi.Unity.UiToolkit.Library.Panel')
+$type.GetConstructors() | ForEach-Object { $_.GetParameters() }
+```
+
+## Game API — Research System
 
 ### Key Classes (`Mafi.Core.dll` / `Mafi.Core.Research` namespace)
 
@@ -175,6 +195,365 @@ var harmony = new Harmony("com.mymod.patch");
 harmony.Patch(originalMethod, prefix, postfix);
 ```
 
+## Research Tree UI Classes (`Mafi.Unity.Ui.Research` namespace)
+
+Found via DLL inspection of `Mafi.Unity.dll`. These are the classes that make up the in-game research tree screen.
+
+### ResearchWindow (`Mafi.Unity.Ui.Research.ResearchWindow`)
+
+- **Not public** — cannot be referenced directly in mod code, cannot be loaded via `typeof()`, and cannot be resolved via `DependencyResolver.GetResolvedInstance<T>()`. Must be accessed via reflection (see "Finding ResearchWindow at Runtime" below).
+- **Extends `Mafi.Unity.UiToolkit.Library.Window`** (full-screen window, not a tool window overlay)
+- Contains the full research tree view (the scrollable node graph)
+- **Not in DI directly** — `ResearchWindow` itself is NOT in `AllResolvedInstances`. Only its nested `Controller` type is registered. The window is lazily created — `Option<ResearchWindow>` on the controller is empty until the player first opens the research tree.
+- **Discovered at runtime via:** `ResearchWindow+Controller` (in DI) → `m_window` field on base class `WindowController<ResearchWindow>` → unwrap `Option<T>` via `HasValue` + `ValueOrNull`.
+
+**Key nested types:**
+  - `ResearchWindow+Controller` — controller for the window (not public). Handles toolbar integration and the `ToggleResearchWindow` shortcut.
+  - `ResearchWindow+ResearchNodeUi` — **private nested class**, extends `Column`. Represents a single node in the tree view
+    - Constructor: `ctor(ResearchManager, ResearchNode, Action<ResearchNodeUi> onClick, Action<ResearchNodeUi> onRightClick)`
+    - Properties: `ResearchNode Node`, `ChildClickManipulator ClickManipulator`
+    - Methods: `ToggleHighlightReason(bool, HighlightReason)`, `Matches(string[])`
+  - `ResearchWindow+ConnectionsRenderer` — private, extends `UiComponent`. Draws lines between nodes
+  - `ResearchWindow+HighlightReason` — private enum
+
+**Key fields (verified at runtime via reflection — all private):**
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `m_inputScheduler` | `IInputScheduler` | Input scheduler |
+| `m_shortcutsManager` | `ShortcutsManager` | Keyboard shortcuts |
+| `m_treeView` | `PanAndZoom` | The scrollable/zoomable tree view container |
+| `m_nodesContainer` | `Row` | Container holding all node UIs |
+| `m_searchField` | `TextField` | Search input field |
+| `m_searchResultView` | `Row` | Search results display |
+| `m_staticConnectionsRenderer` | `ConnectionsRenderer` | Draws static connection lines |
+| `m_highlightedConnectionsRenderer` | `ConnectionsRenderer` | Draws highlighted connection lines |
+| `m_completedConnectionsRenderer` | `ConnectionsRenderer` | Draws completed research connection lines |
+| `m_positionsMap` | `Dict<,>` | Maps nodes to grid positions |
+| `m_childrenMap` | `Dict<,>` | Maps parent nodes to children |
+| `m_nodesViewMap` | `Dict<,>` | Maps `ResearchNode` to `ResearchNodeUi` elements |
+| `m_connections` | `Dict<,>` | Connection data |
+| `m_completedConnections` | `Set<>` | Set of completed connection paths |
+| `m_highlightedConnections` | `Set<>` | Set of highlighted connection paths |
+| `m_selectedNode` | `Option<ResearchNodeUi>` | **Currently selected node** — `IsNone` when no node is clicked. Key field for Phase 4 toggle logic. Use `HasValue`/`ValueOrNull` to check. |
+| `m_nodeClickTime` | `float` | Timestamp of last click (for double-click detection) |
+| `m_contentSize` | `Vector2i` | Size of the tree content |
+| `m_searchResults` | `Lyst<>` | Current search results |
+| `m_previousSearchQuery` | `string` | Previous search query string |
+| `m_searchResultIndex` | `int` | Index in search results |
+
+**NOTE:** `ResearchDetailUi` is NOT a field — it's a **child component** in the hierarchy. See "ResearchWindow Component Tree" below.
+
+**Key methods (found via binary string analysis — all private):**
+
+| Method | Purpose |
+|--------|---------|
+| `buildTree` | Constructs the visual tree from research node data |
+| `updateResearchedLines` | Updates connection line visuals for completed research |
+| `updateSelectionHighlights` | Updates highlight visuals when selection changes |
+| `handleNodeClicked` | Left-click handler — shows detail panel, sets `m_selectedNode` |
+| `handleNodeRightClick` | Right-click handler |
+| `selectAndFocusNode` | Selects a node and pans the view to center on it |
+| `highlightNodeParentsRecursive` | Recursively highlights parent nodes |
+| `nodeDoubleClicked` | Double-click handler (likely starts research) |
+| `moveSearchResultSelection` | Navigates between search results |
+| `openResearch` | Opens/starts research for a specific node |
+| `getNodePos` | Gets a node's position in the tree layout |
+
+### ResearchWindow Component Tree (verified at runtime)
+
+```
+ResearchWindow (extends Window)
+└── [Frame] UiComponent
+    ├── UiComponent (shadow/overlay)
+    ├── Column (window chrome)
+    │   ├── WindowBackground
+    │   └── Column (= Body)
+    │       ├── Row                          ← main content row
+    │       │   ├── PanAndZoom               ← scrollable/zoomable research tree
+    │       │   │   └── ScrollBoth → UiComponent (nodes container)
+    │       │   └── ResearchDetailUi         ← RIGHT-HAND DETAIL PANEL (child[1] of Row)
+    │       │       ├── UiComponent
+    │       │       ├── Column → Column
+    │       │       ├── UiComponent
+    │       │       └── UiComponent
+    │       └── PanelTop                     ← bottom toolbar/search bar
+    │           ├── UiComponent
+    │           ├── Row (buttons, search)
+    │           └── UiComponent
+    └── UiComponent (input blocking overlay)
+```
+
+**Key navigation path to inject a sibling panel:**
+`Body` field (from `Window` base) → `AllChildren[0]` (the `Row`) → `AllChildren[1]` is `ResearchDetailUi`. To add our queue panel as a sibling, `Add()` to the same `Row` parent.
+
+### ResearchDetailUi (`Mafi.Unity.Ui.Research.ResearchDetailUi`)
+
+- **Public class**, extends `Panel` (which extends `PanelBase<Panel, Column>`)
+- This is the **right-hand detail panel** shown when you click a research node
+- **Not a field on ResearchWindow** — it's a **child component** added to `Body → Row` at index 1
+- **No `[GlobalDependency]` attribute** — NOT registered in DI. Created directly by `ResearchWindow`. Cannot be resolved via `DependencyResolver.GetResolvedInstance<ResearchDetailUi>()`.
+- Constructor: `ctor(UiContext, ProtoPopupProvider, NewInstanceOf<InfoPopup>, ResearchManager, OrbitManager)`
+- **Key method:** `void Value(ResearchNode node)` — sets/updates the panel to show details for the given node
+
+**Fields (verified via reflection, all private):**
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `m_context` | `UiContext` | UI context reference |
+| `m_popupProvider` | `ProtoPopupProvider` | Popup provider for info tooltips |
+| `m_infoPopup` | `ProtoPopup` | Info popup instance |
+| `<Node>k__BackingField` | `ResearchNode` | The currently displayed research node |
+| `m_unlocksMainCol` | `Column` | Container for "Unlocks" section |
+| `m_unlocksRow` | `Row` | Row for unlock icons |
+| `m_reqsMainCol` | `Column` | Container for "Requires" section |
+| `m_reqsRow` | `Row` | Row for requirement icons |
+| `m_spacePointsReqTile` | `IconWithTitle` | Space points requirement display |
+| `m_recipes` | `RecipesColumn` | Recipes section |
+| `m_recipesCol` | `Column` | Container for recipes |
+| `m_recipesCache` | `Dict<IProto, StaticRecipeUi>` | Cache of recipe UI elements |
+| `MIN_WIDTH` | `Px` | Minimum panel width (static) |
+| `MAX_RECIPES_HEIGHT` | `Px` | Maximum recipes section height (static) |
+| `PANEL_OVERHEAD` | `Px` | Panel overhead space (static) |
+
+**Properties:**
+- `ResearchNode Node { get; }` — the currently displayed node
+
+**Nested types (all private):**
+  - `ProtoRequiredLock`, `GlobalStatsLock`, `LabTierLock`, `SpaceStationLock` — lock condition displays
+  - `IconWithTitle` — base class for lock displays, extends `Column`
+
+### ResearchThemeHelper (`Mafi.Unity.Ui.Research.ResearchThemeHelper`)
+
+- **Public static class** — helper for node visual styling
+- `static ColorRgba ResolveTitleBgColor(bool isBlocked, InfoForUi nodeInfo)`
+- `static Option<T> ResolveStateIcon(bool isBlocked, InfoForUi nodeInfo, out LocStrFormatted tooltip)`
+
+### CurrentResearchDisplayHud (`Mafi.Unity.Ui.Hud.CurrentResearchDisplayHud`)
+
+- **Public class**, extends `Row`
+- The HUD element in the top toolbar showing current research progress
+- Method: `void SetAvailableSpace(float space)`
+
+### ResearchTab (`Mafi.Unity.Ui.Hud.Notifications.ResearchTab`)
+
+- **Public class**, extends `NotificationsTabBase` (which extends `FrostedPanelWithHeader`)
+- The research notifications tab
+- Nested type: `MessageUi` (private) — individual notification items
+
+### ResearchLabInspector (`Mafi.Unity.Ui.Inspectors.ResearchLabInspector`)
+
+- Inspector panel for research lab buildings (not the tree screen)
+
+### Key Actions/Commands (found in binary strings)
+
+| String | Purpose |
+|--------|---------|
+| `OpenResearchFor` | Opens research tree focused on a specific node |
+| `OpenResearchForRecipe` | Opens research for a recipe |
+| `OpenResearch_Action` | Action to open research window |
+| `ToggleResearchWindow` | Toggle research window visibility |
+| `StartNewResearch_Action` | Start new research |
+| `StartResearch_Action` | Start research |
+| `ResearchQueueDequeueCmd` | Command to enqueue/dequeue research: `new ResearchQueueDequeueCmd(proto, isEnqueue: bool)` |
+
+### Finding ResearchWindow at Runtime (Verified, Working)
+
+Since `ResearchWindow` is not public and not directly in DI, it must be found via its nested Controller:
+
+**Step 1: Find ResearchWindow+Controller in DI**
+```csharp
+// In a [GlobalDependency] constructor that takes DependencyResolver
+object rwController = null;
+foreach (object obj in resolver.AllResolvedInstances) {
+    if (obj.GetType().FullName == "Mafi.Unity.Ui.Research.ResearchWindow+Controller") {
+        rwController = obj;
+        break;
+    }
+}
+```
+
+**Step 2: Get the ResearchWindow from the controller's m_window field**
+```csharp
+// m_window is on the base class WindowController<ResearchWindow>
+// It's Option<ResearchWindow> — lazily created, empty until research tree is first opened
+FieldInfo windowField = rwController.GetType().BaseType?.GetField("m_window",
+    BindingFlags.NonPublic | BindingFlags.Instance);
+object optionValue = windowField.GetValue(rwController);
+
+// Unwrap Option<T> — use HasValue + ValueOrNull (NOT Value, which doesn't exist)
+var optType = optionValue.GetType();
+bool hasValue = (bool)optType.GetProperty("HasValue").GetValue(optionValue);
+if (hasValue) {
+    object researchWindow = optType.GetProperty("ValueOrNull").GetValue(optionValue);
+}
+```
+
+**Step 3: Navigate to ResearchDetailUi (child component, not a field)**
+```csharp
+// Body → child[0] (Row) → child[1] (ResearchDetailUi)
+// Use AllChildren property to enumerate children
+var bodyField = researchWindow.GetType().GetField("Body",
+    BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public);
+object body = bodyField.GetValue(researchWindow);
+// Then iterate AllChildren to find the Row, then its children to find ResearchDetailUi
+```
+
+**Step 4: Monitor selection state**
+```csharp
+// m_selectedNode is Option<ResearchNodeUi> (not a nullable reference)
+FieldInfo selectedField = researchWindow.GetType().GetField(
+    "m_selectedNode",
+    BindingFlags.NonPublic | BindingFlags.Instance
+);
+object selectedOption = selectedField.GetValue(researchWindow);
+// Unwrap with HasValue + ValueOrNull, same as m_window above
+```
+
+**Important notes (verified in-game):**
+- `ResearchWindow` is NOT in `AllResolvedInstances` — only its `Controller` is
+- The window is **lazily created** — `Option` is empty at construction, populated after first research tree open. Must retry later (e.g., in `Activate()`)
+- `Option<T>` API: use `HasValue` (bool) and `ValueOrNull` (returns T or null). There is NO `Value` property.
+- `m_selectedNode` is `Option<ResearchNodeUi>`, NOT a nullable reference — must unwrap with `HasValue`/`ValueOrNull`
+- `ResearchDetailUi` is NOT a field on `ResearchWindow` — it's a child component at `Body → Row[0] → child[1]`
+- The `ResearchWindow+Controller` has only 2 fields: `m_researchManager` (ResearchManager) and `Context` (ControllerContext)
+- The controller's base type is `WindowController<ResearchWindow>` which has the `m_window` field
+
+### Injecting UI into ResearchWindow (Verified in Phase 4b)
+
+**Working pattern:** Subscribe to `IUnityInputMgr.ControllerActivated`, detect research tree controller, then search the component tree and `Add()` our panel to the content Row.
+
+```csharp
+// In constructor — subscribe to event
+_inputMgr.ControllerActivated += OnControllerActivated;
+
+// Event handler — detect research tree opening
+private void OnControllerActivated(IUnityInputController controller) {
+    if (!ReferenceEquals(controller, _rwController)) return;
+    // Extract window if not yet found, then inject panel
+}
+
+// Injection — find ResearchDetailUi's parent Row and add our panel
+var rwComponent = (UiComponent)_researchWindow;
+var contentRow = FindParentOfType(rwComponent, "ResearchDetailUi");
+contentRow.Add(ourPanel);  // Added as sibling of ResearchDetailUi
+```
+
+**Key finding: `FindParentOfType` recursive search** — `ResearchDetailUi` is NOT a field, so we search the component tree recursively using `AllChildren` (direct children only) and match by `child.GetType().Name == "ResearchDetailUi"`. Returns the parent `Row`.
+
+**Critical timing discovery:** On first open, `ControllerActivated` fires BEFORE the `ResearchWindow` is created — `Option<ResearchWindow>` is still empty. The window is built during/after the controller's `Activate()` method, not before. Fix: use `VisualElement.schedule.Execute()` to defer extraction by one frame (~60ms). Also subscribe to `ControllerDeactivated` as a safety net — when the window closes, it definitely exists.
+
+```csharp
+// In OnControllerActivated, if window not found:
+_view.RootElement.schedule.Execute(() => {
+    TryExtractResearchWindow();
+    if (_researchWindowFound) TryInjectPanel();
+});
+```
+
+**Recurring polling with `schedule.Execute()`** — Can be used as a per-frame polling loop by having the callback schedule itself again. Useful for monitoring game state changes (e.g., watching `m_selectedNode`) without needing `InputUpdate()` (which is tied to your controller being active). Use a `bool` flag to start/stop the loop:
+
+```csharp
+private bool _pollingActive;
+
+private void StartPolling() {
+    _pollingActive = true;
+    Poll();
+}
+
+private void Poll() {
+    if (!_pollingActive) return;
+    // ... do your per-frame check here ...
+    // Schedule next check on the next frame
+    someComponent.RootElement.schedule.Execute(() => Poll());
+}
+
+// To stop: set _pollingActive = false (e.g., in OnControllerDeactivated)
+```
+
+**Panel visibility coordination (asymmetric toggle)** — When swapping between two panels (e.g., a custom panel and `ResearchDetailUi`), naive `SetVisible` calls cause 1-frame flicker. The fix is to treat each direction differently:
+- **Hiding game panel (deselect):** Force-hide `ResearchDetailUi` immediately, show your panel. Prevents both panels showing for 1 frame.
+- **Showing game panel (select):** Do NOT force-show `ResearchDetailUi` — wait until `IsVisible()` returns true (meaning the game has updated content and made it visible), THEN hide your panel. Prevents (a) stale content flashing and (b) a 1-frame gap with no panel.
+
+```csharp
+if (nodeSelected) {
+    // Wait for game to show detail panel (with updated content) before hiding ours
+    if (detailPanel.IsVisible()) {
+        ourPanel.SetVisible(false);
+    }
+} else {
+    // Immediately show ours and hide detail panel — no overlap
+    ourPanel.SetVisible(true);
+    detailPanel.SetVisible(false);
+}
+```
+
+### Input Controller System (`Mafi.Unity.InputControl`)
+
+The game manages full-screen windows (research, map, stats, etc.) via an input controller system:
+
+**`IUnityInputMgr`** (`Mafi.Unity` namespace, NOT `Mafi.Unity.InputControl`) — central manager for input controllers (public interface):
+
+| Method | Purpose |
+|--------|---------|
+| `ActivateNewController(IUnityInputController)` | Activates a controller (shows its window) |
+| `DeactivateController(IUnityInputController)` | Deactivates a controller (hides its window) |
+| `ToggleController(IUnityInputController)` | Toggles controller on/off |
+| `DeactivateAllControllers()` | Hides all windows |
+| `IsWindowControllerOpen()` | Returns true if any window controller is active |
+
+**Events on `IUnityInputMgr`:**
+- `ControllerActivated` — fires when any controller is activated. Handler: `Action<IUnityInputController>`
+- `ControllerDeactivated` — fires when any controller is deactivated. Handler: `Action<IUnityInputController>`
+
+These events could be used to detect when the research window opens/closes without needing to poll.
+
+**`ShortcutsManager`** — manages keyboard shortcuts (public class):
+- `ToggleResearchWindow` — `KeyBindings` property for the research window toggle (default: G key)
+- Other toggle properties: `ToggleMap`, `ToggleStats`, `ToggleConsole`, `ToggleRecipeBook`, etc.
+- Method: `IsDown(KeyBindings)`, `IsUp(KeyBindings)`, `IsOn(KeyBindings)` — check key state
+
+**`ShortcutsMap`** — stores the actual key bindings (get/set):
+- All `Toggle*` properties have both getters and setters
+- Backing fields use `<PropertyName>k__BackingField` pattern
+
+### UiComponent Parent/Hierarchy Access
+
+`UiComponent` (base class for all UI components) provides these hierarchy methods:
+
+| Member | Type | Purpose |
+|--------|------|---------|
+| `Parent` | `Option<UiComponent>` | Parent component (None if root) |
+| `HasParent` | `bool` | Whether component has a parent |
+| `Root` | `Option<UiRoot>` | The root of the UI tree |
+| `RootElement` | `VisualElement` | The underlying Unity VisualElement |
+| `IsVisibleInHierarchy` | `bool` | Whether visible considering parent visibility |
+| `RemoveFromHierarchy()` | method | Removes this component from its parent |
+| `TryGetClosestParent(Func, out UiComponent)` | method | Finds ancestor matching a condition |
+| `AttachToRoot(UiRoot)` | method | Attaches to a UI root |
+| `GetChildrenContainer()` | method | Gets the VisualElement that holds children |
+
+### Harmony Evaluation (Update 4)
+
+**Status: Harmony is NOT bundled with the game.**
+- No `0Harmony.dll` in the game's Managed folder
+- No BepInEx or plugin loader framework installed
+- The official modding repo and ExampleMod make no mention of Harmony
+- If needed, Harmony would have to be added as a NuGet package and its DLL distributed alongside the mod
+
+**Current assessment: Harmony is NOT needed for Phase 4.** The reflection-based approach (finding `ResearchWindow` via its Controller's `m_window` field, navigating the component tree to find `ResearchDetailUi`, polling `m_selectedNode`) is working without patching any game methods. Only reconsider Harmony if:
+1. We need to intercept `handleNodeClicked` to detect selection changes (polling `m_selectedNode` should work instead)
+2. We need to modify the Escape key behavior
+
+### Built-in Reorder Support
+
+The game has built-in reordering UI components:
+- `Mafi.Unity.UiToolkit.Component.Manipulators.Reorderable` — **public class**, drag-and-drop reorder manipulator
+  - Constructor: `ctor(VisualElement dragHandle, bool lockDragToAxis)`
+  - Extends `UnityEngine.UIElements.Manipulator`
+- `ReorderableMultiColumns` — used by `PinnedProductsHud` for multi-column reordering
+- Various `Reorder*Cmd` types: `ReorderCmd`, `ReorderRecipeCmd`, `ReorderTrainLineScheduleItemCmd`, etc.
+
 ## UI Window Patterns (Update 4)
 
 ### Working Pattern: PanelWithHeader + IToolbarItemController + ToolbarHud
@@ -252,6 +631,26 @@ public class MyWindowController : IToolbarItemController {
 - Both classes need `[GlobalDependency(RegistrationMode.AsEverything)]` for DI auto-registration
 - `UiComponent.SetVisible(bool)` controls visibility; also available as extension: `.Show()`, `.Hide()`, `.Visible(bool)`
 
+### ToolbarHud Internals (for advanced modding)
+
+`ToolbarHud` has these internal fields (discovered via reflection, useful for understanding layout):
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `m_mainContainer` | `Column` | Main toolbar container |
+| `m_buttonsPanel` | `Row` | Panel holding toolbar buttons |
+| `m_menu` | `ToolbarMenu` | The expandable menu |
+| `m_toolboxContainer` | `Row` | Container for toolboxes |
+| `m_toolWindowContainer` | `Row` | **Container where `AddToolWindow()` places windows** |
+| `m_primaryToolButtonsRow` | `Row` | Primary tool buttons |
+| `m_toolButtonsGrid` | `Grid` | Grid of tool buttons |
+| `m_inputMgr` | `IUnityInputMgr` | Reference to the input manager |
+| `m_shortcutsManager` | `ShortcutsManager` | Reference to shortcuts manager |
+| `m_resolver` | `DependencyResolver` | Reference to the DI resolver |
+| `m_currentController` | `Option<IToolbarItemController>` | Currently active controller |
+| `PopupProvider` | `ProtoPopupProvider` | **Public field** — popup provider (useful for creating tooltips) |
+| `ProtoInfoPopup` | `ProtoPopup` | **Public field** — info popup instance |
+
 ### API Signatures (verified via DLL inspection)
 
 | Method | Signature |
@@ -260,11 +659,13 @@ public class MyWindowController : IToolbarItemController {
 | `ToolbarHud.AddToolWindow` | `void AddToolWindow(UiComponent window)` |
 | `ToolbarHud.AddToolButton` | `Button AddToolButton(LocStrFormatted name, IToolbarItemController controller, String iconAssetPath, Single order, Func<ShortcutsManager, KeyBindings> shortcut, Nullable<TutorialId> tutorialId)` |
 | `KeyBindings.FromKey` | `static KeyBindings FromKey(KbCategory category, ShortcutMode mode, KeyCode code)` |
+| `Panel` ctor | `Panel(bool noBolts = false)` — default includes bolts (same as `ResearchDetailUi`) |
 | `PanelWithHeader` ctor | `PanelWithHeader(Nullable<LocStrFormatted> title)` |
 | `Column` ctor | `Column(Px gap)` or `Column(Outer outer, Inner inner, Nullable<Px> gap)` |
 | `Row` ctor | `Row(Px gap)` or `Row(Outer outer, Inner inner, Nullable<Px> gap)` |
 | `ScrollColumn` ctor | `ScrollColumn()` (parameterless) |
-| `Display` ctor | `Display()` or `Display(LocStrFormatted text)` |
+| `Label` ctor | `Label(LocStrFormatted text = default)` — normal-case text, preferred for panels |
+| `Display` ctor | `Display()` or `Display(LocStrFormatted text)` — ALL CAPS, for HUD elements |
 
 ### UiToolkit Component Hierarchy (key types)
 
@@ -308,12 +709,17 @@ UiComponentExtensions.ChildAtOrNone(component, index)     // Get child by index 
 UiComponentExtensions.ChildAtOrDefault(component, index)  // Get child by index (null if missing)
 ```
 
-**`PanelWithHeader` specific methods for adding to the body:**
+**`Panel` / `PanelWithHeader` methods for adding to the body (from `PanelBase`):**
 ```csharp
-PanelWithHeader BodyAdd(params UiComponent[] children)                    // Add children to body
-PanelWithHeader BodyAdd(Action<UiComponentExtensions> applyStyles, params UiComponent[] children)  // Add with styles
-PanelWithHeader BodyGap(Px gap)                                            // Set gap between body items
-Column Body { get; }                                                       // Direct access to body Column
+Panel BodyAdd(params UiComponent[] children)                    // Add children to body
+Panel BodyAdd(Action<UiComponentExtensions> applyStyles, params UiComponent[] children)  // Add with styles
+Panel BodyGap(Px gap)                                            // Set gap between body items
+Panel ReducedPadding()                                           // Less internal padding
+Panel BrightText()                                               // Lighter text color
+Panel StyleFloater()                                             // Floating panel style
+Panel BackgroundStyle(DisplayState state)                        // Background tint (Neutral/Inactive/Important/Positive/Warning/Danger)
+Column Body { get; }                                             // Direct access to body Column
+static Px PADDING                                                // Panel's internal padding value (use for margin offsets)
 ```
 
 **Usage patterns:**
@@ -332,9 +738,69 @@ var scroll = new ScrollColumn();
 scroll.Add(child1);
 ```
 
-### Text Display Component: `Display` (`Mafi.Unity.Ui.Library`)
+### Native Panel Styling Pattern (verified via ILSpy decompilation of `ResearchDetailUi`)
 
-**There is no `Txt` or `Label` class.** The primary text component is `Display`, which implements `IComponentWithText`.
+The game's `ResearchDetailUi` extends `Panel` and uses these patterns. Follow this for native-looking custom panels:
+
+```csharp
+// Panel setup — default constructor, bolts ON, no BackgroundStyle() call
+var panel = new Panel();              // noBolts defaults to false
+panel.Width(new Px(300));             // Set width only, height is content-driven
+panel.Body.JustifyItemsCenter();      // Center body contents
+
+// Title row — full-width header with padding that cancels out Panel's PADDING
+var titleRow = new Row(1.pt());
+titleRow.Padding(8.px())
+    .MarginLeftRight(-PanelBase<Panel, Column>.PADDING)  // Extend to panel edges
+    .JustifyItemsCenter();
+var title = new Label(text).TextCenterMiddle().FontBold().FontSize(15);
+titleRow.Add(title);
+
+// Section headers — bold, uppercase
+new Label(Tr.Requires).FontBold().UpperCase()
+
+// Normal text — Label, not Display
+new Label(description).TextLeftTop().FontSize(15).Padding(1.pt())
+
+// Grouped section
+new Column(1.pt()) { c => c.StyleGroup().Padding(2.pt()), /* children */ }
+```
+
+**Key rules:**
+- Use `Label` (not `Display`) for all text — avoids ALL CAPS
+- Use `.pt()` extension for point-based gaps (e.g., `1.pt()`, `2.pt()`)
+- Use `.px()` extension for pixel values (e.g., `8.px()`)
+- Use `PanelBase<Panel, Column>.PADDING` to reference the standard panel padding
+- Do NOT call `BackgroundStyle()` — the default Panel background matches the game
+- Title row uses negative `MarginLeftRight` to extend edge-to-edge within the panel
+
+### Text Components
+
+#### `Label` (`Mafi.Unity.UiToolkit.Library`) — **Preferred for normal text**
+
+`Label` is the text component used by the game's native UI (e.g., `ResearchDetailUi`). It renders text in **normal case** by default.
+
+```csharp
+// Constructor
+new Label()                               // Empty label
+new Label(LocStrFormatted text)           // Label with initial text
+
+// Key methods (declared on Label)
+Label UpperCase(bool upperCase = true)     // Opt-in ALL CAPS (for section headers)
+Label IncFontSize()                        // Increment font size
+Label TinyFontSize()                       // Small font variant
+Label Selectable(bool selectable)          // Make text selectable
+Label InfoIconPosition(InfoIconPos pos)    // Info icon placement (Right, Left, None)
+```
+
+**Use `Label` for:**
+- Normal text (renders in proper case)
+- Titles: `new Label(text).FontBold().FontSize(15)`
+- Section headers: `new Label(text).FontBold().UpperCase()`
+
+#### `Display` (`Mafi.Unity.Ui.Library`) — HUD/status text
+
+`Display` implements `IComponentWithText` but **renders ALL CAPS by default** (game styling for HUD elements). Use `Label` instead for normal panel text.
 
 ```csharp
 // Constructors
@@ -351,7 +817,7 @@ Display LargeFont()                        // Larger font
 Display IncFontSize()                      // Increment font size
 ```
 
-**Known quirk:** `Display` renders text in ALL CAPS by default (game styling). This is cosmetic — the underlying string is normal case. Needs investigation to override (may require USS class or font style override).
+**Known quirk:** `Display` renders text in ALL CAPS by default (game styling). This is cosmetic — the underlying string is normal case. For normal-case text in panels, use `Label` instead.
 
 **Setting text via extension methods (from `UiComponentWithTextExtensions`):**
 ```csharp
@@ -401,6 +867,11 @@ LocStr -> LocStrFormatted                 // Implicit conversion from LocStr
 new Px(10f)         // Explicit constructor (takes float)
 Px px = 10;         // Implicit conversion from int
 float f = somePx;   // Implicit conversion to float
+
+// Extension methods on int (used by native game code)
+1.pt()              // Convert int to Px (point-based, used for gaps/padding)
+8.px()              // Convert int to Px (pixel-based)
+25.Percent()        // Convert int to percentage-based Px
 ```
 
 ### ScrollColumn / ScrollBase
@@ -435,9 +906,53 @@ scroll.Clear()                             // Remove all children
 |--------|-------|
 | `Size(Px?, Px?)` | `component.Size(new Px(340), new Px(400))` |
 | `Width(Px)` / `Height(Px)` | Set one dimension |
+| `MaxWidth(Px)` / `MaxHeight(Px)` | Set max dimension |
 | `FlexGrow(float)` | Flex layout grow factor |
+| `NoShrink()` | Prevent flex shrinking |
 | `Margin(Px)` | Set margins |
+| `MarginLeftRight(Px)` | Horizontal margins (useful with `-PanelBase.PADDING` to extend edge-to-edge) |
+| `Padding(Px)` / `PaddingLeftRight(Px)` / `PaddingTopBottom(Px)` | Set padding |
 | `Fill()` | Fill parent container |
+| `AlignSelfCenter()` | Center self in parent |
+| `AlignItemsStretch()` | Stretch children to fill cross-axis |
+| `JustifyItemsCenter()` | Center children along main axis |
+| `Wrap()` | Enable flex wrap |
+| `StyleGroup()` | Apply grouped visual style (subtle background) |
+| `Border(int, ColorRgba, int)` | Border width, color, radius |
+| `Background(ColorRgba)` | Set background color |
+
+### Button Styles (from decompiled `ResearchDetailUi`)
+
+```csharp
+new ButtonText(Button.Primary, Tr.StartResearch_Action)    // Green/primary styled button
+new ButtonIcon(Button.Danger, "path/to/icon.svg")          // Red/danger styled button
+new ButtonText(Tr.ResearchQueue__Remove)                   // Default (unstyled) button
+button.OnClick((Action)delegate { /* handler */ }, allowKeyPresses: false)
+button.Enabled(bool)                                       // Enable/disable
+```
+
+### Theme Colors (`Mafi.Unity.UiToolkit.Themes.Theme`)
+
+```csharp
+Theme.DefaultColor       // Standard text/icon color
+Theme.PositiveColor      // Green — success, unlocked, active
+Theme.WarningColor       // Yellow/orange — warnings, paused
+Theme.DangerColor        // Red — errors, locked
+Theme.InactiveColor      // Gray — finished, disabled
+```
+
+### DisplayState Enum (`Mafi.Unity.UiToolkit.Library.DisplayState`)
+
+Used by `Panel.BackgroundStyle()` and `ProgressBarPercentInline.State()`:
+
+| Value | Int | Typical use |
+|-------|-----|-------------|
+| `Neutral` | 0 | Default |
+| `Inactive` | 1 | Grayed out |
+| `Important` | 2 | Highlighted |
+| `Positive` | 3 | Success/active (green) |
+| `Warning` | 4 | Caution (yellow) |
+| `Danger` | 5 | Error/blocked (red) |
 
 ### Approaches That DO NOT Work in Update 4
 
@@ -463,6 +978,148 @@ uBuilder.Observe(() => someProperty)
     .Do(value => { /* update UI */ });
 AddUpdater(uBuilder.Build());
 ```
+
+## Input Manager & Controller Interfaces (`Mafi.Unity.dll`)
+
+### `IUnityInputMgr` (`Mafi.Unity` namespace)
+
+The central input manager interface. Manages controller activation/deactivation, global shortcuts, and escape handling. Extends `IRootEscapeManager`. Injected via DI as `IUnityInputMgr`.
+
+**Properties:**
+
+| Property | Type | Purpose |
+|----------|------|---------|
+| `ActiveControllers` | `IIndexable<IUnityInputController>` | Currently active input controllers |
+| `InspectorManager` | `Option<IInspectorsManager>` | Inspector manager reference |
+
+**Events:**
+
+| Event | Type | Purpose |
+|-------|------|---------|
+| `ControllerActivated` | `Action<IUnityInputController>` | Fired when any controller is activated |
+| `ControllerDeactivated` | `Action<IUnityInputController>` | Fired when any controller is deactivated |
+
+**Methods:**
+
+| Method | Signature | Purpose |
+|--------|-----------|---------|
+| `ActivateNewController` | `void ActivateNewController(IUnityInputController)` | Activates a controller |
+| `DeactivateController` | `void DeactivateController(IUnityInputController)` | Deactivates a controller |
+| `ToggleController` | `void ToggleController(IUnityInputController)` | Toggle activation state |
+| `DeactivateAllControllers` | `void DeactivateAllControllers()` | Deactivate everything |
+| `DeactivateAllUnpinned` | `void DeactivateAllUnpinned(ControllerGroup)` | Deactivate non-pinned controllers in group |
+| `RegisterGlobalShortcut` | `void RegisterGlobalShortcut(Func<ShortcutsManager, KeyBindings>, IUnityInputController)` | Register a hotkey to toggle a controller |
+| `RegisterGlobalShortcut` | `void RegisterGlobalShortcut(Func<ShortcutsManager, KeyBindings>, Func<bool>)` | Register a hotkey with a callback |
+| `RemoveGlobalShortcut` | Two overloads (controller or callback) | Remove a registered shortcut |
+| `RegisterGameMenuController` | `void RegisterGameMenuController(IGameMenuController)` | Register the game menu |
+| `RegisterGameSpeedController` | `void RegisterGameSpeedController(GameSpeedController)` | Register the speed controller |
+| `OnBuildModeActivated` | `void OnBuildModeActivated(IUnityInputController)` | Signal build mode started |
+| `IsWindowControllerOpen` | `bool IsWindowControllerOpen()` | Check if any window controller is open |
+| `SetInspectorManager` | `void SetInspectorManager(IInspectorsManager)` | Set the inspector manager |
+| `OpenGameMenu` | `void OpenGameMenu()` | Open the game menu |
+
+**Inherited from `IRootEscapeManager` (`Mafi.Unity`):**
+
+| Method | Purpose |
+|--------|---------|
+| `AddRootEscapeHandler(IRootEscapeHandler)` | Register a popup-level escape handler |
+| `ClearRootEscapeHandler(IRootEscapeHandler)` | Remove an escape handler |
+
+### `IUnityInputController` (`Mafi.Unity.InputControl` namespace)
+
+Interface for all input controllers (windows, tools, inspectors). Implemented by controllers that can be activated/deactivated.
+
+| Member | Type/Signature | Purpose |
+|--------|---------------|---------|
+| `Config` | `ControllerConfig` (property) | Configuration flags for this controller |
+| `Activate()` | `void` | Called when controller is activated |
+| `Deactivate()` | `void` | Called when controller is deactivated |
+| `InputUpdate()` | `bool` | Called every frame when active; return true if input was consumed |
+
+### `ControllerConfig` (`Mafi.Unity.InputControl` namespace)
+
+A struct with boolean flags and pre-built static instances. Used to configure controller behavior.
+
+**Fields (all `bool` unless noted):**
+
+| Field | Purpose |
+|-------|---------|
+| `IgnoreEscapeKey` | If true, ESC won't close this controller |
+| `DeactivateOnOtherControllerActive` | If true, deactivate when another controller activates |
+| `DeactivateOnNonUiClick` | If true, deactivate on click outside UI |
+| `AllowInspectorCursor` | Allow inspector cursor when active |
+| `BlockShortcuts` | Block global shortcuts while active |
+| `DisableCameraControl` | Disable camera while active |
+| `BlockCameraControlIfInputWasProcessed` | Block camera only if InputUpdate returns true |
+| `PreventSpeedControl` | Prevent speed changes while active |
+| `Group` | `ControllerGroup` — which group this controller belongs to |
+| `GroupToCloseOnActivation` | `Option<Lyst<ControllerGroup>>` — groups to close when activating |
+
+**Pre-built static configs:**
+
+| Config | Typical use |
+|--------|------------|
+| `ControllerConfig.Window` | Standard window (most common for mods) |
+| `ControllerConfig.WindowWithKeyNav` | Window with keyboard navigation |
+| `ControllerConfig.ImmersiveFullscreen` | Fullscreen UI |
+| `ControllerConfig.InspectorWindow` | Inspector panel |
+| `ControllerConfig.Menu` | Menu controller |
+| `ControllerConfig.MenuActive` | Active menu |
+| `ControllerConfig.GameMenu` | Game menu (ESC menu) |
+| `ControllerConfig.MessageCenter` | Message center |
+| `ControllerConfig.Tool` | Tool (building, designating) |
+| `ControllerConfig.ToolBlockingCamera` | Tool that blocks camera |
+| `ControllerConfig.Mode` | Mode controller |
+| `ControllerConfig.LayersPanel` | Layers panel |
+| `ControllerConfig.PhotoMode` | Photo mode |
+| `ControllerConfig.EnforcedOverlay` | Enforced overlay |
+
+### `ControllerGroup` enum (`Mafi.Unity.InputControl` namespace)
+
+| Value | Purpose |
+|-------|---------|
+| `None` | No group |
+| `BottomMenu` | Bottom toolbar menu |
+| `Tool` | Tool group (building, etc.) |
+| `AlwaysActive` | Never auto-deactivated |
+| `Window` | Window group |
+| `Inspector` | Inspector group |
+| `WindowFullscreen` | Fullscreen window group |
+
+## DependencyResolver API (`Mafi.DependencyResolver` in `Mafi.dll`)
+
+The DI container used throughout the game. Available in `IMod.Initialize()`, `IMod.EarlyInit()`, and injected into `[GlobalDependency]` constructors.
+
+### Key Methods
+
+| Method | Purpose |
+|--------|---------|
+| `GetResolvedInstance<T>()` | Returns `Option<T>` — the resolved instance of a registered type |
+| `TryGetResolvedDependency<T>(out T)` | Returns bool, sets `out` param if found |
+| `Resolve<T>()` | Returns `T` directly (throws if not found) |
+| `TryResolve<T>()` | Returns `Option<T>` |
+| `AllResolvedInstances` | `IEnumerable<object>` — **all** resolved instances. Useful for finding non-public types by type name string matching. |
+| `GetResolvedInstance(Type type)` | Non-generic overload — returns `Option<object>` |
+| `Instantiate<T>()` | Creates a new instance with DI constructor injection |
+| `Instantiate<T>(params object[] args)` | Creates with explicit constructor args + DI |
+| `ResolveAll<T>()` | Returns all implementations of an interface |
+
+### Finding Non-Public Types at Runtime
+
+When a type is not public (like `ResearchWindow`), you can't use `GetResolvedInstance<T>()` because you can't write `typeof(ResearchWindow)`. Instead, iterate all instances:
+
+```csharp
+object targetInstance = null;
+foreach (object obj in resolver.AllResolvedInstances) {
+    if (obj.GetType().FullName == "Mafi.Unity.Ui.Research.ResearchWindow") {
+        targetInstance = obj;
+        break;
+    }
+}
+// Then use reflection on targetInstance.GetType() to access fields/methods
+```
+
+**Note:** This pattern is untested for `ResearchWindow` specifically. If `ResearchWindow` is not in `AllResolvedInstances`, an alternative approach is to find it via the `ControllerActivated` event on `IUnityInputMgr` — listen for controllers being activated and check their type name.
 
 ## `IMod` Lifecycle (Official Order)
 
