@@ -52,11 +52,11 @@ Phased, iterative development. Each phase is a small testable increment verified
 - [x] **4a: Find ResearchWindow instance at runtime** — Found via `ResearchWindow+Controller` in DI → `m_window` (`Option<ResearchWindow>`) → `ValueOrNull`. Window is lazily created (empty until research tree is first opened). `ResearchDetailUi` is a child component at `Body → child[0] (Row) → child[1]`, not a field. `m_selectedNode` is `Option<ResearchNodeUi>`.
 - [x] **4b: Inject queue panel as sibling** — Get `ResearchDetailUi`'s parent Row, create our `Panel` and `Add()` it as a sibling. Verify it renders next to or overlapping the detail panel area.
 - [x] **4c: Wire up visibility toggle** — Poll `m_selectedNode` field via `schedule.Execute()` loop: when empty → show queue panel + force-hide `ResearchDetailUi`; when has value → wait for `ResearchDetailUi.IsVisible()` then hide queue panel. Independent of F9 window.
-- [x] **4d: Port queue UI** — Embedded panel uses `Panel` (same base as `ResearchDetailUi`) with native styling: `Label` for text (not `Display`), `.FontBold().FontSize(15)` title, `ScrollColumn` body. Queue rows built via shared `BuildQueueRows` helper. Arrow buttons reorder the actual queue and refresh both embedded and F9 views.
-- [ ] **4e: Remove standalone F9 window** — Embedded panel is functional. Remove `IToolbarItemController` implementation, F9 hotkey, `ToolbarHud` registration, and `ResearchReorderWindowView` class.
-- [ ] **4f: Escape behavior** — Verify: first Escape = deselect node → show queue panel, second Escape = close research tree. May need no extra code if the game handles deselection naturally.
-- [ ] **4g: In-game verification** — Full flow: open research tree → see queue → click node → see details → click empty space → see queue again → Escape closes tree.
-- [ ] Update manifest version
+- [x] **4d: Port queue UI** — Embedded panel uses `Panel` (same base as `ResearchDetailUi`) with native styling: `Label` for text (not `Display`), `.FontBold().FontSize(15)` title, `ScrollColumn` body. Queue rows built via `BuildQueueRows` helper. Arrow buttons reorder the actual queue and refresh the embedded view.
+- [x] **4e: Remove standalone F9 window** — Embedded panel is functional. Removed `IToolbarItemController` implementation, F9 hotkey, `ToolbarHud` registration, and `ResearchReorderWindowView` class. Moved `BuildQueueRows` into the controller. `ToolbarHud` kept as constructor dependency solely for scheduling (via `m_mainContainer` reflection).
+- [x] **4f: Escape behavior** — Confirmed: first Escape deselects node and shows queue panel, second Escape closes research tree. No extra code needed.
+- [x] **4g: In-game verification** — Full flow confirmed: open research tree → see queue → click node → see details → click empty space → see queue again → Escape closes tree.
+- [x] Update manifest version — bumped to 0.0.2
 
 ### Phase 5: Core polish (do these before Phase 6)
 Each task is a single focused change. Do them in any order.
@@ -99,13 +99,13 @@ Independent subtasks — do any/all based on user priority. No required order.
 
 **Phase 3c: COMPLETE** — Each queue item is now a `Row` with a text label + ▲/▼ `ButtonText` buttons. First item hides ▲, last item hides ▼. Buttons call `MoveItem(fromIndex, toIndex)` which uses `PopAt` + `EnqueueAt` on the reflected queue, then refreshes the display. Verified in-game: buttons reorder the actual game queue correctly.
 
-**Phase 4a: COMPLETE** — ResearchWindow instance found at runtime. Discovery path: `ResearchWindow+Controller` (in DI) → `m_window` field on base class `WindowController<ResearchWindow>` → unwrap `Option<T>` via `HasValue` + `ValueOrNull`. Window is lazily created — `Option` is empty at construction, populated after first research tree open. Retry logic in `Activate()` handles this. Component tree mapped: `Body → Row → [PanAndZoom, ResearchDetailUi]`. `m_selectedNode` is `Option<ResearchNodeUi>` (not nullable).
+**Phase 4a: COMPLETE** — ResearchWindow instance found at runtime. Discovery path: `ResearchWindow+Controller` (in DI) → `m_window` field on base class `WindowController<ResearchWindow>` → unwrap `Option<T>` via `HasValue` + `ValueOrNull`. Window is lazily created — `Option` is empty at construction, populated after first research tree open. Retry logic via `ScheduleDeferredExtraction` handles first-open timing. Component tree mapped: `Body → Row → [PanAndZoom, ResearchDetailUi]`. `m_selectedNode` is `Option<ResearchNodeUi>` (not nullable).
 
 **Phase 4b: COMPLETE** — Placeholder panel successfully injected into the research tree's content Row as a sibling of `ResearchDetailUi`. Approach: subscribe to `IUnityInputMgr.ControllerActivated` event (from `Mafi.Unity` namespace), detect when research tree controller activates, then recursively search the component tree for `ResearchDetailUi`'s parent Row and `Add()` our panel to it. Confirmed in-game: placeholder text renders in the correct right-hand area, both our panel and `ResearchDetailUi` show side by side when a node is selected (as expected — visibility toggle is 4c).
 
 **4b timing fix: RESOLVED** — On first open, `ControllerActivated` fires BEFORE the `ResearchWindow` is created (the `Option<ResearchWindow>` is still empty). Fixed with `ScheduleDeferredExtraction`: uses `VisualElement.schedule.Execute()` to retry extraction one frame later. Window is found on attempt 1 (~60ms delay). Also added `ControllerDeactivated` handler as a safety net. Panel now renders on the very first research tree open.
 
-**Phase 4c: COMPLETE** — Visibility toggle working flicker-free. Uses `schedule.Execute()` polling loop reading `m_selectedNode.HasValue` via reflection. Key insight: naive show/hide causes flicker during transitions. Final approach uses asymmetric logic — when deselecting, force-hide `ResearchDetailUi` immediately (prevents both panels showing); when selecting, wait until `ResearchDetailUi.IsVisible()` is true before hiding our panel (prevents empty gap). Polling starts on `OnControllerActivated`, stops on `OnControllerDeactivated`. Fully independent of F9 window. `ResearchDetailUi` reference captured during `TryInjectPanel()` by iterating the content Row's children.
+**Phase 4c: COMPLETE** — Visibility toggle working flicker-free. Uses `schedule.Execute()` polling loop reading `m_selectedNode.HasValue` via reflection. Key insight: naive show/hide causes flicker during transitions. Final approach uses asymmetric logic — when deselecting, force-hide `ResearchDetailUi` immediately (prevents both panels showing); when selecting, wait until `ResearchDetailUi.IsVisible()` is true before hiding our panel (prevents empty gap). Polling starts on `OnControllerActivated`, stops on `OnControllerDeactivated`. `ResearchDetailUi` reference captured during `TryInjectPanel()` by iterating the content Row's children.
 
 **Phase 4d: COMPLETE** — Queue UI ported into the embedded panel. Key discovery: decompiled `ResearchDetailUi` with ILSpy to learn the exact native styling approach. Native panel uses `Panel` default constructor (bolts ON, no `BackgroundStyle()` call), `Label` for text (not `Display` — this fixes the ALL CAPS issue), and `.FontBold().FontSize(15)` for titles. Title row uses `Row(1.pt())` with `Padding(8.px()).MarginLeftRight(-PanelBase<Panel, Column>.PADDING)` to match native header alignment. Queue rows built via shared `BuildQueueRows` static helper (used by both embedded panel and F9 window). Arrow buttons trigger `MoveItem` + `RefreshEmbeddedPanel` to update in-place.
 
@@ -216,7 +216,7 @@ When the player deselects (clicks empty space or presses Escape):
 - Escape key behavior might need special handling — if the game's deselection logic also hides the right panel area entirely, our panel would disappear too
 - All of these will be tested in step 4a (runtime discovery proof-of-concept)
 
-**Key API for Phase 5a (drag-and-drop):**
+**Key API for Phase 6 (drag-and-drop):**
 - `Mafi.Unity.UiToolkit.Component.Manipulators.Reorderable` — **public class**, constructor: `(VisualElement dragHandle, bool lockDragToAxis)`. This is the same manipulator used by the recipe list in building windows (e.g., Assembly III). Extends `UnityEngine.UIElements.Manipulator`.
 
 ## Technical Reference

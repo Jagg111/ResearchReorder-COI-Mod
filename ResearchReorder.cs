@@ -8,9 +8,9 @@ using Mafi.Core.Prototypes;
 namespace ResearchReorder;
 
 /// <summary>
-/// Main mod entry point. The UI (window, toolbar button) is handled by
-/// ResearchReorderWindowView and ResearchReorderWindowController,
-/// which are auto-registered via [GlobalDependency].
+/// Main mod entry point. The queue panel (embedded in the research tree)
+/// is handled by ResearchReorderWindowController, auto-registered via
+/// [GlobalDependency].
 /// </summary>
 public sealed class ResearchReorderMod : IMod {
 

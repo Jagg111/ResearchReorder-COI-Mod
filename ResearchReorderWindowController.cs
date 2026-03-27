@@ -8,25 +8,22 @@ using Mafi.Localization;
 using Mafi.Unity;
 using Mafi.Unity.InputControl;
 using Mafi.Unity.Ui.Hud;
-using Mafi.Unity.UiStatic.Toolbar;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Library;
-using UnityEngine;
 
 namespace ResearchReorder;
 
 /// <summary>
-/// Controller that manages the Research Queue window visibility.
-/// Reads the research queue, populates the view, and handles reorder requests.
-/// Also discovers the game's ResearchWindow and injects a queue panel into it.
+/// Discovers the game's ResearchWindow and injects a queue panel into it.
+/// When no research node is selected, the panel shows the research queue with
+/// arrow buttons for reordering.
 /// </summary>
 [GlobalDependency(RegistrationMode.AsEverything)]
-public class ResearchReorderWindowController : IToolbarItemController {
+public class ResearchReorderWindowController {
 
-	private readonly ResearchReorderWindowView _view;
 	private readonly ResearchManager _researchMgr;
 	private readonly FieldInfo _queueField;
-	private bool _isVisible;
+	private UiComponent _schedulerSource; // For deferred frame scheduling before panel exists
 
 	// Phase 4: ResearchWindow discovery
 	private object _rwController;     // The game's ResearchWindow+Controller instance
@@ -45,20 +42,23 @@ public class ResearchReorderWindowController : IToolbarItemController {
 	private PropertyInfo _hasValueProp;        // HasValue property on Option<ResearchNodeUi>
 	private bool _pollingActive;
 
-	public ControllerConfig Config => ControllerConfig.Window;
-	public bool IsVisible => _isVisible;
-	public bool DeactivateShortcutsIfNotVisible => false;
-	public event Action<IToolbarItemController> VisibilityChanged;
-
 	public ResearchReorderWindowController(
-		ResearchReorderWindowView view,
 		ToolbarHud toolbar,
 		ResearchManager researchManager,
 		DependencyResolver resolver,
 		IUnityInputMgr inputMgr) {
-		_view = view;
 		_researchMgr = researchManager;
 		_inputMgr = inputMgr;
+
+		// Get a UiComponent from ToolbarHud's internal container for frame scheduling.
+		// Needed by ScheduleDeferredExtraction before our injected panel exists.
+		try {
+			var containerField = typeof(ToolbarHud).GetField("m_mainContainer",
+				BindingFlags.NonPublic | BindingFlags.Instance);
+			_schedulerSource = containerField?.GetValue(toolbar) as UiComponent;
+		} catch (Exception ex) {
+			Log.Warning($"ResearchReorder: Could not get scheduler source: {ex.Message}");
+		}
 
 		// Cache the reflection field for queue access
 		_queueField = typeof(ResearchManager).GetField(
@@ -69,19 +69,6 @@ public class ResearchReorderWindowController : IToolbarItemController {
 		if (_queueField == null) {
 			Log.Error("ResearchReorder: Could not find m_researchQueue field!");
 		}
-
-		// Wire up the view's move callback to our reorder logic
-		_view.OnMoveRequested = MoveItem;
-
-		toolbar.AddMainMenuButton(
-			new LocStrFormatted("Research Queue"),
-			this,
-			"",
-			1500f,
-			sm => KeyBindings.FromKey(KbCategory.Windows, ShortcutMode.Game, KeyCode.F9)
-		);
-
-		toolbar.AddToolWindow(_view);
 
 		// Find ResearchWindow via the game's ResearchWindow+Controller.
 		// The controller extends WindowController<ResearchWindow> and stores the
@@ -117,7 +104,7 @@ public class ResearchReorderWindowController : IToolbarItemController {
 		_inputMgr.ControllerActivated += OnControllerActivated;
 		_inputMgr.ControllerDeactivated += OnControllerDeactivated;
 
-		Log.Info("ResearchReorder: Controller constructed, toolbar button registered");
+		Log.Info("ResearchReorder: Controller constructed");
 	}
 
 	/// <summary>
@@ -173,10 +160,10 @@ public class ResearchReorderWindowController : IToolbarItemController {
 	}
 
 	private void ScheduleDeferredExtraction(int attempt) {
-		if (_panelInjected || attempt > 10) return;
+		if (_panelInjected || attempt > 10 || _schedulerSource == null) return;
 
 		try {
-			_view.RootElement.schedule.Execute(() => {
+			_schedulerSource.RootElement.schedule.Execute(() => {
 				if (_panelInjected) return;
 				if (!_researchWindowFound) TryExtractResearchWindow();
 				if (_researchWindowFound) {
@@ -278,14 +265,7 @@ public class ResearchReorderWindowController : IToolbarItemController {
 		_embeddedRows.Clear();
 
 		var items = ReadQueueItems();
-
-		// Arrow buttons in embedded panel reorder the queue and refresh both views
-		void HandleMove(int from, int to) {
-			MoveItem(from, to);
-			RefreshEmbeddedPanel();
-		}
-
-		ResearchReorderWindowView.BuildQueueRows(_embeddedScroll, _embeddedRows, items, HandleMove);
+		BuildQueueRows(_embeddedScroll, _embeddedRows, items, MoveItem);
 	}
 
 	private static UiComponent FindParentOfType(UiComponent parent, string childTypeName) {
@@ -341,33 +321,9 @@ public class ResearchReorderWindowController : IToolbarItemController {
 		}
 	}
 
-	public void Activate() {
-		_isVisible = true;
-		_view.SetVisible(true);
-		VisibilityChanged?.Invoke(this);
-		RefreshQueueDisplay();
-
-		if (!_researchWindowFound) {
-			TryExtractResearchWindow();
-		}
-		if (_researchWindowFound && !_panelInjected) {
-			TryInjectPanel();
-		}
-	}
-
-	public void Deactivate() {
-		_isVisible = false;
-		_view.SetVisible(false);
-		VisibilityChanged?.Invoke(this);
-	}
-
-	public bool InputUpdate() {
-		return false;
-	}
-
 	/// <summary>
 	/// Moves a queue item from one position to another using PopAt + EnqueueAt,
-	/// then refreshes the F9 window display.
+	/// then refreshes the embedded panel display.
 	/// </summary>
 	private void MoveItem(int fromIndex, int toIndex) {
 		if (_queueField == null) return;
@@ -383,11 +339,11 @@ public class ResearchReorderWindowController : IToolbarItemController {
 		queue.EnqueueAt(item, toIndex);
 		Log.Info($"ResearchReorder: Moved '{item.Proto.Strings.Name.TranslatedString}' from {fromIndex} to {toIndex}");
 
-		RefreshQueueDisplay();
+		RefreshEmbeddedPanel();
 	}
 
 	/// <summary>
-	/// Reads queue item names into a list. Shared by both embedded and F9 views.
+	/// Reads queue item names into a list.
 	/// </summary>
 	private List<string> ReadQueueItems() {
 		var items = new List<string>();
@@ -403,7 +359,57 @@ public class ResearchReorderWindowController : IToolbarItemController {
 		return items;
 	}
 
-	private void RefreshQueueDisplay() {
-		_view.RefreshQueue(ReadQueueItems());
+	/// <summary>
+	/// Builds numbered queue rows with arrow buttons into a target container.
+	/// Uses Label (not Display) and native game styling patterns to match
+	/// the look of ResearchDetailUi.
+	/// </summary>
+	private static void BuildQueueRows(
+		UiComponent container,
+		List<UiComponent> trackingList,
+		List<string> queueItems,
+		Action<int, int> onMoveRequested) {
+
+		if (queueItems.Count == 0) {
+			var emptyLabel = new Label(new LocStrFormatted("Queue is empty"));
+			emptyLabel.FontSize(14);
+			container.Add(emptyLabel);
+			trackingList.Add(emptyLabel);
+			return;
+		}
+
+		for (int i = 0; i < queueItems.Count; i++) {
+			int index = i; // capture for closure
+
+			var row = new Row(1.pt());
+			row.Margin(1.pt());
+			row.JustifyItemsCenter();
+
+			// Numbered label
+			string text = $"{i + 1}. {queueItems[i]}";
+			var label = new Label(new LocStrFormatted(text));
+			label.FontSize(15);
+			label.FlexGrow(1f);
+			row.Add(label);
+
+			// Move Up button (hidden for first item)
+			var upBtn = new ButtonText(new LocStrFormatted("\u25b2"), () => {
+				onMoveRequested?.Invoke(index, index - 1);
+			});
+			upBtn.Size(new Px(30), new Px(24));
+			if (i == 0) upBtn.SetVisible(false);
+			row.Add(upBtn);
+
+			// Move Down button (hidden for last item)
+			var downBtn = new ButtonText(new LocStrFormatted("\u25bc"), () => {
+				onMoveRequested?.Invoke(index, index + 1);
+			});
+			downBtn.Size(new Px(30), new Px(24));
+			if (i == queueItems.Count - 1) downBtn.SetVisible(false);
+			row.Add(downBtn);
+
+			container.Add(row);
+			trackingList.Add(row);
+		}
 	}
 }

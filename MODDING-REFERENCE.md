@@ -179,7 +179,7 @@ staticField.SetValue(null, newValue);
 
 ## Harmony Patching
 
-**Lib.Harmony v2.2.2** (NuGet package) can be used for runtime method patching. We haven't needed it yet — reflection has been sufficient. If we need to inject UI into the existing research screen (Phase 4), Harmony will likely be required.
+**Lib.Harmony v2.2.2** (NuGet package) can be used for runtime method patching. We haven't needed it — reflection has been sufficient for all phases including injecting UI into the research screen (Phase 4).
 
 ```csharp
 // Attribute-based patching
@@ -445,7 +445,8 @@ contentRow.Add(ourPanel);  // Added as sibling of ResearchDetailUi
 
 ```csharp
 // In OnControllerActivated, if window not found:
-_view.RootElement.schedule.Execute(() => {
+// Use any live UiComponent's RootElement for scheduling (e.g., ToolbarHud's m_mainContainer)
+_schedulerSource.RootElement.schedule.Execute(() => {
     TryExtractResearchWindow();
     if (_researchWindowFound) TryInjectPanel();
 });

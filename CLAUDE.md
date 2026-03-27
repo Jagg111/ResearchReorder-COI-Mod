@@ -20,6 +20,7 @@ The user developing the mod and prompting is a non-programmer (technical product
 ResearchReorder.sln          # Visual Studio solution
 ResearchReorder.csproj       # Project file (build config, references, auto-deploy)
 ResearchReorder.cs           # Main mod entry point
+ResearchReorderWindowController.cs  # Queue panel injected into research tree (auto-registered via DI)
 manifest.json                # Mod metadata (id, version, authors, dependencies, etc.)
 bin/                         # Build output (gitignored)
 obj/                         # Build intermediates (gitignored)
@@ -50,7 +51,7 @@ For detailed game API docs, modding patterns, reflection examples, and UI patter
 
 ## Implementation Progress
 
-For the phased implementation plan, task tracking, and technical discoveries, see **IMPLEMENTATION-PLAN.md**. Current status: **Phases 1-3a complete, Phase 3b up next** (show queue items in window).
+For the phased implementation plan, task tracking, and technical discoveries, see **IMPLEMENTATION-PLAN.md**. Current status: **Phases 1-4 complete, Phase 5 up next** (core polish).
 
 ## Mod Goal & Player Experience
 
@@ -61,7 +62,7 @@ For the phased implementation plan, task tracking, and technical discoveries, se
 **Scope decisions:**
 - Queue reordering only (not tree layout changes)
 - Single-player only (COI has no multiplayer)
-- Ideally any item can be moved anywhere; the currently-in-progress item may need to stay locked in place (TBD once we dig into the API)
+- Any item can be moved anywhere; moving the currently-in-progress item changes the active research (verified working)
 - Drag-and-drop preferred; arrow buttons as fallback if drag-and-drop is too complex
 - Phased approach: core reorder logic first → move-up/move-down buttons → upgrade to drag-and-drop
 
