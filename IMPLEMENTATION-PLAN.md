@@ -70,7 +70,7 @@ Each task is a single focused change. Do them in any order unless noted.
 - [ ] **5d: Remove from queue** — Add ✕ button per item. Wire to the game's dequeue command.
 - [ ] **5e: Reactive updates** — Auto-refresh when queue changes externally. Research `ResearchManager` events; fall back to polling if none exist.
 - [ ] **5f: Reflection error handling** — try/catch around reflection access. Show "Queue unavailable" on failure.
-- [ ] **5g: Visual polish — wider panel** — Increase panel width from 300px to ~450px to match native `ResearchDetailUi`.
+- [x] **5g: Visual polish — wider panel** — Read `MIN_WIDTH` static field from `ResearchDetailUi` via reflection at runtime (fallback 468px). Added `MaxWidth(25.Percent())` cap. Panel now matches native width exactly.
 - [x] **5h: Visual polish — title bar background** — *(Completed by 5a — title row now has `IN_QUEUE_COLOR` background.)*
 - [ ] **5i: Visual polish — row spacing** — Increase padding/margins on queue rows for breathing room.
 - [ ] **5j: Save compatibility testing** — Test on fresh and existing saves. Install, reorder, save, reload, remove mod, reload.
@@ -97,7 +97,7 @@ Independent subtasks — do any/all based on user priority. No required order.
 
 **Phase 5a: COMPLETE** — Panel now matches native `ResearchDetailUi` styling: full-height via `AlignSelfStretch()`, title bar with `IN_QUEUE_COLOR` background. Detailed visual construction documented in MODDING-REFERENCE.md. Phase 5h (title bar background) also addressed.
 
-**Phase 5 in progress** — Remaining: 5c–5g, 5i, 5j.
+**Phase 5 in progress** — Remaining: 5c–5f, 5i, 5j.
 
 ## Phase Details
 

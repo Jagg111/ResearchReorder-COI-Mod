@@ -745,7 +745,12 @@ The game's `ResearchDetailUi` extends `Panel` and uses these patterns. Follow th
 ```csharp
 // Panel setup — default constructor, bolts ON, no BackgroundStyle() call
 var panel = new Panel();              // noBolts defaults to false
-panel.Width(new Px(300));             // Set width only, height is content-driven
+// Read MIN_WIDTH from ResearchDetailUi via reflection for exact match:
+var minWidthField = researchDetailUi.GetType().GetField("MIN_WIDTH",
+    BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+Px panelWidth = minWidthField != null ? (Px)minWidthField.GetValue(null) : new Px(468);
+panel.Width(panelWidth);              // Match native panel width exactly
+panel.MaxWidth(25.Percent());         // Same cap as ResearchDetailUi
 panel.Body.JustifyItemsCenter();      // Center body contents
 
 // Title row — full-width header with padding that cancels out Panel's PADDING

@@ -223,7 +223,18 @@ public class ResearchReorderWindowController {
 			// Panel() with default bolts, AlignSelfStretch() for full height,
 			// Body.JustifyItemsCenter(), single Column for content.
 			_injectedPanel = new Panel();
-			_injectedPanel.Width(new Px(300));
+			// Read MIN_WIDTH from ResearchDetailUi so we match its exact width
+			Px panelWidth = new Px(468); // fallback
+			if (_researchDetailUi != null) {
+				var minWidthField = _researchDetailUi.GetType().GetField("MIN_WIDTH",
+					BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+				if (minWidthField != null) {
+					panelWidth = (Px)minWidthField.GetValue(null);
+					Log.Info($"ResearchReorder: Using native MIN_WIDTH = {panelWidth}");
+				}
+			}
+			_injectedPanel.Width(panelWidth);
+			_injectedPanel.MaxWidth(25.Percent());
 			_injectedPanel.AlignSelfStretch();  // Fill full height of parent Row (covers diamond plate)
 			_injectedPanel.Body.JustifyItemsCenter();
 
