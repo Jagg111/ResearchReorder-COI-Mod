@@ -219,15 +219,24 @@ public class ResearchReorderWindowController {
 				}
 			}
 
-			// Build the queue panel using Panel — same base class as ResearchDetailUi.
-			// Default Panel() constructor includes bolts and standard background,
-			// matching the native look exactly.
+			// Build the queue panel matching native ResearchDetailUi exactly:
+			// Panel() with default bolts, AlignSelfStretch() for full height,
+			// Body.JustifyItemsCenter(), single Column for content.
 			_injectedPanel = new Panel();
 			_injectedPanel.Width(new Px(300));
+			_injectedPanel.AlignSelfStretch();  // Fill full height of parent Row (covers diamond plate)
+			_injectedPanel.Body.JustifyItemsCenter();
 
-			// Title row with header text, matching native style
+			// Single content column matching native pattern (Column with 2pt gap)
+			var contentCol = new Column(2.pt());
+			contentCol.AlignItemsStretch();
+
+			// Title row — matches native: Padding(8), MarginLeftRight(-PADDING), centered,
+			// with a colored background like ResearchDetailUi's title bar.
+			// Uses IN_QUEUE_COLOR from ResearchThemeHelper: ColorRgba(3700253, 83)
 			var titleRow = new Row(1.pt());
 			titleRow.Padding(8.px()).MarginLeftRight(-PanelBase<Panel, Column>.PADDING).JustifyItemsCenter();
+			titleRow.Background(new ColorRgba(3700253, 83));
 			var title = new Label(new LocStrFormatted("Research Queue"));
 			title.TextCenterMiddle().FontBold().FontSize(15);
 			titleRow.Add(title);
@@ -236,7 +245,8 @@ public class ResearchReorderWindowController {
 			_embeddedScroll = new ScrollColumn();
 			_embeddedScroll.FlexGrow(1f);
 
-			_injectedPanel.BodyAdd(titleRow, _embeddedScroll);
+			contentCol.Add(titleRow, _embeddedScroll);
+			_injectedPanel.Body.Add(contentCol);
 
 			// Defer adding to next frame so layout picks it up
 			_panelInjected = true;

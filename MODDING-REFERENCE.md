@@ -391,12 +391,11 @@ if (hasValue) {
 
 **Step 3: Navigate to ResearchDetailUi (child component, not a field)**
 ```csharp
-// Body → child[0] (Row) → child[1] (ResearchDetailUi)
-// Use AllChildren property to enumerate children
-var bodyField = researchWindow.GetType().GetField("Body",
-    BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public);
-object body = bodyField.GetValue(researchWindow);
-// Then iterate AllChildren to find the Row, then its children to find ResearchDetailUi
+// ResearchDetailUi is NOT a field — it's a child component in the visual tree.
+// Use recursive search through AllChildren to find it by type name:
+var rwComponent = (UiComponent)researchWindow;
+var contentRow = FindParentOfType(rwComponent, "ResearchDetailUi");
+// contentRow is the Row containing both PanAndZoom and ResearchDetailUi
 ```
 
 **Step 4: Monitor selection state**
@@ -775,6 +774,146 @@ new Column(1.pt()) { c => c.StyleGroup().Padding(2.pt()), /* children */ }
 - Do NOT call `BackgroundStyle()` — the default Panel background matches the game
 - Title row uses negative `MarginLeftRight` to extend edge-to-edge within the panel
 
+### ResearchDetailUi — Full Visual Construction (deep-dive decompilation)
+
+Detailed breakdown of how `ResearchDetailUi` is built, for replicating its look in custom panels.
+
+#### Class hierarchy
+
+```
+ResearchDetailUi : Panel : PanelBase<Panel, Column> : Column : UiComponent
+```
+
+#### How it's added in ResearchWindow
+
+```csharp
+// ResearchWindow constructor creates a Row for the main content area:
+new Row {
+    c => c.FlexGrow(1f).AlignSelfStretch(),   // Row fills parent height & width
+    m_treeView = new PanAndZoom(...)
+        .FlexGrow(1f)
+        .AlignSelfStretch(),                   // Pan-zoom fills remaining width, full height
+    researchDetail.Instance
+        .AlignSelfStretch()                    // CRITICAL: stretches panel to full Row height
+}
+```
+
+**Key discovery:** `.AlignSelfStretch()` is what makes the detail panel fill the entire right side, covering the diamond plate background completely. Without it, a Panel only sizes to its content.
+
+#### AlignSelfStretch extension method
+
+- **Class:** `UiComponentLayoutExtensions` (static extension methods)
+- **Namespace:** `Mafi.Unity.UiToolkit.Component`
+- **Signature:** `public static T AlignSelfStretch<T>(this T component) where T : IComponentWithLayout`
+- **Effect:** Sets `align-self: stretch` in Unity UIToolkit flex layout — the element fills the cross-axis of its parent container
+- **Using:** Already available via `using Mafi.Unity.UiToolkit.Component;`
+- **When to use:** Any time a panel is placed inside a `Row` and needs to fill the full height
+
+#### PanelBase internal structure
+
+```csharp
+// PanelBase<TPanel, TContainer> constructor builds:
+Add(
+    m_background (UiComponent, class: Cls.panelBg, FixRepeatedBgForPanel()),
+    Body (TContainer, class: Cls.panelBody, name: "Body"),
+    Border (UiComponent, class: Cls.panelBorder, IgnoreInputPicking()),
+    bolts (UiComponent, class: Cls.bolts4, IgnoreInputPicking())  // unless noBolts=true
+);
+
+// Base class is Column with shadow: base(Outer.PanelShadow)
+// CSS classes applied: Cls.panel on self
+// PADDING constant: 12.px() (PanelBase<Panel, Column>.PADDING)
+```
+
+The background, border, and bolts are absolute-positioned layers — when the panel stretches to full height, they all stretch with it automatically.
+
+#### Width calculation
+
+```csharp
+// Static fields on ResearchDetailUi:
+MIN_WIDTH = 4 * (IconWithTitle.WIDTH + IconWithTitle.MARGIN) + 2 * PanelBase<Panel, Column>.PADDING
+          = 4 * (110px + 1pt) + 2 * 12px ≈ 468px
+MAX_RECIPES_HEIGHT = 320px
+PANEL_OVERHEAD = 2 * PanelBase<Panel, Column>.PADDING + 20px = 44px
+
+// In Value() method, width can grow based on recipe layout:
+this.Width((recipeWidth + PANEL_OVERHEAD).Max(MIN_WIDTH));
+this.MaxWidth(25.Percent());  // Never more than 25% of parent
+```
+
+#### Title row and dynamic background color
+
+```csharp
+// Title row setup:
+titleRow = new Row(1.pt()) {
+    c => c.Padding(8).MarginLeftRight(-PanelBase<Panel, Column>.PADDING).JustifyItemsCenter(),
+    canRepeatIcon,
+    title = new Label().TextCenterMiddle().FontBold().FontSize(15),
+    researchCostRow = new Row(1.pt()) { ... }  // absolute-positioned left
+}
+
+// Title bar color is set dynamically via observer:
+titleRow.Background(ResearchThemeHelper.ResolveTitleBgColor(isBlocked, info));
+```
+
+The title row's background extends edge-to-edge via `MarginLeftRight(-PADDING)` which cancels out the body's 12px padding.
+
+#### ResearchThemeHelper — title bar colors
+
+`ResearchThemeHelper` (public static class in `Mafi.Unity.Ui.Research`) provides state-based colors:
+
+```csharp
+// All colors are: new ColorRgba(rgbInt, alpha)
+BLOCKED_COLOR       = new ColorRgba(15892536, 110)  // reddish, high alpha
+RESEARCHED_COLOR    = new ColorRgba(1842204, 126)    // dark gray, high alpha
+IN_PROGRESS_COLOR   = new ColorRgba(3522855, 87)     // green
+IN_QUEUE_COLOR      = new ColorRgba(3700253, 83)     // dark green
+UNLOCKED_COLOR      = new ColorRgba(2009087, 89)     // blue (RGB ~30, 167, 255)
+LOCKED_COLOR        = new ColorRgba(15166315, 40)     // reddish, low alpha
+CAN_BE_ENQUEUED_COLOR = new ColorRgba(3957655, 90)   // blue-gray (RGB ~60, 99, 151)
+
+// ResolveTitleBgColor priority:
+// 1. Blocked → BLOCKED_COLOR
+// 2. Researched → RESEARCHED_COLOR
+// 3. In progress → IN_PROGRESS_COLOR
+// 4. In queue → IN_QUEUE_COLOR
+// 5. Unlocked & not locked by parents → UNLOCKED_COLOR
+// 6. Locked → LOCKED_COLOR
+// 7. Fallback → CAN_BE_ENQUEUED_COLOR
+```
+
+These `ColorRgba` fields are **private static readonly** — cannot be accessed directly from mod code. To use the same colors, construct `new ColorRgba(rgbInt, alpha)` with the values above.
+
+#### Body structure (content column)
+
+```csharp
+// Single Column(2.pt()) added to Body, with AlignItemsStretch():
+Body.Add(new Column(2.pt()) {
+    c => c.AlignItemsStretch(),
+    titleRow,           // Row with title, cost, repeat icon
+    desc,               // Label, FontSize(15), Padding(1.pt())
+    accBonusCol,        // Column(1.pt()), StyleGroup(), Padding(2.pt())
+    reqsMainCol,        // Column(1.pt()) with "REQUIRES" header + Row of icons
+    unlocksMainCol,     // Column(1.pt()) with "UNLOCKS" header + Row of icons
+    recipesCol,         // Column(1.pt()) with "NEW RECIPES" header + ScrollBoth
+    researchProgressCol,// Column(1.pt()) with progress bar
+    noLabAvailableStatus,// Warning row
+    queueStatus,        // Label, centered
+    buttonsRow,         // Row with Start/Cancel/Enqueue/Dequeue buttons
+    finishedInfo,       // Row with tick icon + "Finished" label
+    lockedInfo          // Row with lock icon + locked reason
+});
+```
+
+#### Summary — what to replicate for a native-looking side panel
+
+1. **`AlignSelfStretch()`** on the panel when adding to a parent Row — fills full height
+2. **`new Panel()`** with default constructor (bolts ON)
+3. **Title row:** `new Row(1.pt()).Padding(8.px()).MarginLeftRight(-PanelBase<Panel, Column>.PADDING).JustifyItemsCenter()` with `.Background(colorRgba)` for the colored header
+4. **Body:** `Body.JustifyItemsCenter()`, content in `Column(2.pt()).AlignItemsStretch()`
+5. **Width:** Set via `panel.Width(px)` and optionally `panel.MaxWidth(percent)`
+6. **No BackgroundStyle() call** — default panel background matches game chrome
+
 ### Text Components
 
 #### `Label` (`Mafi.Unity.UiToolkit.Library`) — **Preferred for normal text**
@@ -972,13 +1111,26 @@ public class MyInspector : IEntityInspector<MyEntity>
 }
 ```
 
-**Reactive UI updates:**
+**Reactive UI updates (verified via `ResearchDetailUi` decompilation):**
+
+The game uses `this.Observe().Do()` chains on `UiComponent` for reactive data binding. These are extension methods that watch a lambda for value changes and call the handler when it changes:
+
 ```csharp
-UpdaterBuilder uBuilder = UpdaterBuilder.Start();
-uBuilder.Observe(() => someProperty)
-    .Do(value => { /* update UI */ });
-AddUpdater(uBuilder.Build());
+// Single observer — watch one value
+this.Observe(() => Node.State)
+    .Do(state => { /* update UI based on state */ });
+
+// Multi-observer — watch multiple values, handler receives all
+this.Observe(() => Node.Proto)
+    .Observe(() => Node.TimesResearched)
+    .Observe(() => Node.ScienceCost)
+    .Do((proto, timesResearched, cost) => { /* update UI */ });
+
+// Conditional visibility via ObserveVisible
+component.ObserveVisible(parentComponent, () => someCondition);
 ```
+
+These are auto-evaluated by the game's syncer/updater system — no manual polling or `schedule.Execute()` needed. Used extensively in `ResearchDetailUi` for title, progress bar, button visibility, and lock state.
 
 ## Input Manager & Controller Interfaces (`Mafi.Unity.dll`)
 

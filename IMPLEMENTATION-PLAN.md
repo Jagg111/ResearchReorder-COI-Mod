@@ -59,17 +59,21 @@ Phased, iterative development. Each phase is a small testable increment verified
 - [x] Update manifest version — bumped to 0.0.2
 
 ### Phase 5: Core polish (do these before Phase 6)
-Each task is a single focused change. Do them in any order.
+Each task is a single focused change. Do them in any order unless noted.
 
-- [ ] **5a: Empty queue state** — When queue is empty, show "No research queued" message in the panel.
-- [ ] **5b: Currently-researching item** — Show active research at position 0, visually distinct (bold or "▶" prefix).
-- [ ] **5c: Remove from queue** — Add ✕ button per item. Wire to the game's dequeue command.
-- [ ] **5d: Reactive updates** — Auto-refresh when queue changes externally. Research `ResearchManager` events; fall back to polling if none exist.
-- [ ] **5e: Reflection error handling** — try/catch around reflection access. Show "Queue unavailable" on failure.
-- [ ] **5f: Visual polish — wider panel** — Increase panel width from 300px to ~450px to match native `ResearchDetailUi`.
-- [ ] **5g: Visual polish — title bar background** — Add a background color to the title row to match native panel headers.
-- [ ] **5h: Visual polish — row spacing** — Increase padding/margins on queue rows for breathing room.
-- [ ] **5i: Save compatibility testing** — Test on fresh and existing saves. Install, reorder, save, reload, remove mod, reload.
+- [x] **5a: Match native panel styling (do first)** — Deep-dive decompiled `ResearchDetailUi` to document its full visual construction in MODDING-REFERENCE.md. Applied two key fixes:
+  - **Full-height stretch:** Added `AlignSelfStretch()` — the same call the native panel uses. Panel now fills the entire right side, completely covering the diamond plate texture.
+  - **Title bar styling:** Added `titleRow.Background(new ColorRgba(3700253, 83))` using the game's `IN_QUEUE_COLOR` for a colored header bar matching native style.
+  - Background and bolts/frame unchanged (already correct from Phase 4d).
+- [ ] **5b: Empty queue state** — `BuildQueueRows` already shows "Queue is empty" when the list is empty. Verify in-game and polish wording/styling if needed (e.g., "No research queued", centered, muted color).
+- [ ] **5c: Currently-researching item** — Show active research at position 0, visually distinct (bold or "▶" prefix).
+- [ ] **5d: Remove from queue** — Add ✕ button per item. Wire to the game's dequeue command.
+- [ ] **5e: Reactive updates** — Auto-refresh when queue changes externally. Research `ResearchManager` events; fall back to polling if none exist.
+- [ ] **5f: Reflection error handling** — try/catch around reflection access. Show "Queue unavailable" on failure.
+- [ ] **5g: Visual polish — wider panel** — Increase panel width from 300px to ~450px to match native `ResearchDetailUi`.
+- [x] **5h: Visual polish — title bar background** — *(Completed by 5a — title row now has `IN_QUEUE_COLOR` background.)*
+- [ ] **5i: Visual polish — row spacing** — Increase padding/margins on queue rows for breathing room.
+- [ ] **5j: Save compatibility testing** — Test on fresh and existing saves. Install, reorder, save, reload, remove mod, reload.
 
 ### Phase 6: Drag-and-drop reordering
 **Goal:** Replace arrow buttons with drag handles so players can drag queue items to reorder, matching the feel of the game's recipe reorder UI. Keep arrow buttons as a fallback if drag-and-drop proves infeasible.
@@ -89,25 +93,11 @@ Independent subtasks — do any/all based on user priority. No required order.
 
 ## Current Status
 
-**Phase 1: COMPLETE** — Queue access works. All 6 queued research items logged with correct IDs. `Queueue<T>` API fully mapped.
+**Phases 1–4: COMPLETE.** Queue access, reorder logic, UI rendering, and research tree integration all working. Standalone F9 window removed in favor of the embedded panel.
 
-**Phase 2: COMPLETE** — Reorder confirmed working. `PopAt()` + `EnqueueAt()` moves items correctly, UI updates immediately, save/reload preserves order, active research not disrupted. Reusable `MoveItem(fromIndex, toIndex)` helper ready for Phase 3 UI.
+**Phase 5a: COMPLETE** — Panel now matches native `ResearchDetailUi` styling: full-height via `AlignSelfStretch()`, title bar with `IN_QUEUE_COLOR` background. Detailed visual construction documented in MODDING-REFERENCE.md. Phase 5h (title bar background) also addressed.
 
-**Phase 3a: COMPLETE** — Blank "Research Queue" panel renders on screen. Uses `PanelWithHeader` + `IToolbarItemController` + `ToolbarHud`. F9 toggles visibility. Toolbar button appears in bottom bar when window is active.
-
-**Phase 3b: COMPLETE** — Queue items display as numbered text list with human-readable names. Uses `ScrollColumn` + `Display` labels, `Proto.Strings.Name.TranslatedString` for display names. Controller injects `ResearchManager`, reads queue via reflection, refreshes on `Activate()`. Verified in-game: 4-item queue matches tooltip exactly. Note: text renders ALL CAPS due to game's default `Display` styling — cosmetic fix deferred to Phase 3d.
-
-**Phase 3c: COMPLETE** — Each queue item is now a `Row` with a text label + ▲/▼ `ButtonText` buttons. First item hides ▲, last item hides ▼. Buttons call `MoveItem(fromIndex, toIndex)` which uses `PopAt` + `EnqueueAt` on the reflected queue, then refreshes the display. Verified in-game: buttons reorder the actual game queue correctly.
-
-**Phase 4a: COMPLETE** — ResearchWindow instance found at runtime. Discovery path: `ResearchWindow+Controller` (in DI) → `m_window` field on base class `WindowController<ResearchWindow>` → unwrap `Option<T>` via `HasValue` + `ValueOrNull`. Window is lazily created — `Option` is empty at construction, populated after first research tree open. Retry logic via `ScheduleDeferredExtraction` handles first-open timing. Component tree mapped: `Body → Row → [PanAndZoom, ResearchDetailUi]`. `m_selectedNode` is `Option<ResearchNodeUi>` (not nullable).
-
-**Phase 4b: COMPLETE** — Placeholder panel successfully injected into the research tree's content Row as a sibling of `ResearchDetailUi`. Approach: subscribe to `IUnityInputMgr.ControllerActivated` event (from `Mafi.Unity` namespace), detect when research tree controller activates, then recursively search the component tree for `ResearchDetailUi`'s parent Row and `Add()` our panel to it. Confirmed in-game: placeholder text renders in the correct right-hand area, both our panel and `ResearchDetailUi` show side by side when a node is selected (as expected — visibility toggle is 4c).
-
-**4b timing fix: RESOLVED** — On first open, `ControllerActivated` fires BEFORE the `ResearchWindow` is created (the `Option<ResearchWindow>` is still empty). Fixed with `ScheduleDeferredExtraction`: uses `VisualElement.schedule.Execute()` to retry extraction one frame later. Window is found on attempt 1 (~60ms delay). Also added `ControllerDeactivated` handler as a safety net. Panel now renders on the very first research tree open.
-
-**Phase 4c: COMPLETE** — Visibility toggle working flicker-free. Uses `schedule.Execute()` polling loop reading `m_selectedNode.HasValue` via reflection. Key insight: naive show/hide causes flicker during transitions. Final approach uses asymmetric logic — when deselecting, force-hide `ResearchDetailUi` immediately (prevents both panels showing); when selecting, wait until `ResearchDetailUi.IsVisible()` is true before hiding our panel (prevents empty gap). Polling starts on `OnControllerActivated`, stops on `OnControllerDeactivated`. `ResearchDetailUi` reference captured during `TryInjectPanel()` by iterating the content Row's children.
-
-**Phase 4d: COMPLETE** — Queue UI ported into the embedded panel. Key discovery: decompiled `ResearchDetailUi` with ILSpy to learn the exact native styling approach. Native panel uses `Panel` default constructor (bolts ON, no `BackgroundStyle()` call), `Label` for text (not `Display` — this fixes the ALL CAPS issue), and `.FontBold().FontSize(15)` for titles. Title row uses `Row(1.pt())` with `Padding(8.px()).MarginLeftRight(-PanelBase<Panel, Column>.PADDING)` to match native header alignment. Queue rows built via shared `BuildQueueRows` static helper (used by both embedded panel and F9 window). Arrow buttons trigger `MoveItem` + `RefreshEmbeddedPanel` to update in-place.
+**Phase 5 in progress** — Remaining: 5b–5g, 5i, 5j.
 
 ## Phase Details
 
@@ -121,10 +111,10 @@ Independent subtasks — do any/all based on user priority. No required order.
 
 Use `PopAt(fromIndex)` + `EnqueueAt(item, toIndex)` to move a single item. This is a one-step move operation — no need to clear and rebuild the queue. **Note:** `EnqueueAt` signature is `EnqueueAt(item, index)` — item first, index second.
 
-**What to watch for:**
-- Does the game UI update immediately after we manipulate the queue in `Initialize()`?
-- Does saving and reloading preserve the new order?
-- Any side effects (e.g., does the currently-researching item get disrupted)?
+**Verified (Phase 2):**
+- Game UI updates immediately after queue mutation — yes
+- Save/reload preserves reordered queue — yes
+- Currently-researching item not disrupted by reordering behind it — confirmed
 
 ### Phase 3a — What We Tried & Learned
 
@@ -135,20 +125,13 @@ Use `PopAt(fromIndex)` + `EnqueueAt(item, toIndex)` to move a single item. This 
 **Old patterns that don't exist in Update 4:**
 - `WindowView`, `BaseWindowController<T>`, `IToolbarItemInputController` — none of these types exist in current game DLLs
 
-**Working approach (For Update 4 of Captain of Industry):**
-- `PanelWithHeader` — public UiToolkit component, used as the window body
-- `IToolbarItemController` (extends `IUnityInputController`) — handles toolbar button + activation
-- `ToolbarHud.AddMainMenuButton()` — registers a toolbar button with hotkey
-- `ToolbarHud.AddToolWindow()` — registers a UiComponent as a tool window
-- `ControllerConfig.Window` — pre-built config for window-type controllers
-- `UiComponent.SetVisible(bool)` — controls visibility
-- Both view and controller use `[GlobalDependency(RegistrationMode.AsEverything)]` for DI auto-registration
+**Phase 3a working approach (superseded by Phase 4):**
+The standalone `PanelWithHeader` + `IToolbarItemController` + F9 hotkey pattern was removed in Phase 4e when the queue panel was embedded directly into the research tree. Documented in MODDING-REFERENCE.md under "UI Window Patterns" for reference if a standalone tool window is ever needed again.
 
-**Behavioral notes:**
-- Toolbar button appears in bottom bar only while window is active (standard game behavior for tool windows)
-- F9 hotkey works for toggle. Uses `KeyBindings.FromKey(KbCategory.Windows, ShortcutMode.Game, KeyCode.F9)`
-- Empty string `""` for icon path works fine (no icon shown)
-- Constructor-based registration on `ToolbarHud` works — no special lifecycle hook needed
+**Current approach (Phase 4+):**
+- `[GlobalDependency]` class injects panel directly into the research tree's content Row
+- No standalone window, no toolbar button, no hotkey
+- Panel visibility toggled by polling `m_selectedNode` on `ResearchWindow`
 
 ### Phase 3 — Open Questions (Resolved)
 
@@ -189,32 +172,19 @@ When the player deselects (clicks empty space or presses Escape):
   - Inject our panel as a sibling of `researchDetail` via `Parent` container
 - Only reconsider Harmony if runtime instance discovery fails
 
-#### Phase 4 Strategy (Reflection-Based, No Harmony)
+#### Phase 4 Strategy (Reflection-Based, No Harmony) — IMPLEMENTED
 
-**Step 1: Find the ResearchWindow instance**
-- In a `[GlobalDependency]` class constructor or `Initialize()`, iterate `resolver.AllResolvedInstances`
-- Match by `obj.GetType().FullName == "Mafi.Unity.Ui.Research.ResearchWindow"`
-- Fallback: listen to `IUnityInputMgr.ControllerActivated` event and capture the instance when the research window opens
+All steps below are implemented and working. See `ResearchReorderWindowController.cs` for the final code.
 
-**Step 2: Get the ResearchDetailUi and its parent container**
-- Via reflection: `researchDetail` field on `ResearchWindow` → cast to `ResearchDetailUi` (public type)
-- Call `researchDetail.Parent` to get the container that holds the detail panel
+**Step 1: Find the ResearchWindow instance** — Match `ResearchWindow+Controller` in `resolver.AllResolvedInstances` by `FullName`. Get `m_window` field from base class `WindowController<ResearchWindow>`, unwrap `Option<T>`. Window is lazily created; `ScheduleDeferredExtraction` retries on first open.
 
-**Step 3: Create and inject our queue panel**
-- Create a `Panel` (same type as `ResearchDetailUi`) with our queue UI inside
-- `Add()` it to the same parent container as a sibling
+**Step 2: Find ResearchDetailUi** — NOT a field on ResearchWindow (corrected from original plan). Found via recursive `FindParentOfType` search through the component tree using `AllChildren`, matching `child.GetType().Name == "ResearchDetailUi"`. Returns the parent Row for sibling injection.
 
-**Step 4: Toggle visibility based on selection**
-- Poll `m_selectedNode` field on `ResearchWindow` (via reflection)
-- When null → show our queue panel, ensure `researchDetail` is hidden
-- When non-null → hide our queue panel (game shows `researchDetail` naturally)
-- Polling can happen in `InputUpdate()` on our controller, or via an `UpdaterBuilder` observer
+**Step 3: Inject queue panel** — `new Panel()` with `AlignSelfStretch()`, added to the same Row as `ResearchDetailUi` via `contentRow.Add()`.
 
-**Risks & unknowns:**
-- `ResearchWindow` might not be in `AllResolvedInstances` — it could be created by its Controller rather than by DI directly
-- The parent container structure is unknown — we're assuming `researchDetail` has a parent we can inject into
-- Escape key behavior might need special handling — if the game's deselection logic also hides the right panel area entirely, our panel would disappear too
-- All of these will be tested in step 4a (runtime discovery proof-of-concept)
+**Step 4: Toggle visibility** — Poll `m_selectedNode.HasValue` via `schedule.Execute()` loop. Asymmetric toggle prevents flicker (see MODDING-REFERENCE.md for pattern details).
+
+**Resolved risks:** ResearchWindow is NOT in `AllResolvedInstances` (only its Controller is) — resolved via Controller's `m_window` field. Parent container structure is a `Row` — confirmed. Escape behavior works correctly with no extra code.
 
 **Key API for Phase 6 (drag-and-drop):**
 - `Mafi.Unity.UiToolkit.Component.Manipulators.Reorderable` — **public class**, constructor: `(VisualElement dragHandle, bool lockDragToAxis)`. This is the same manipulator used by the recipe list in building windows (e.g., Assembly III). Extends `UnityEngine.UIElements.Manipulator`.
