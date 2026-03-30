@@ -67,7 +67,7 @@ Each task is a single focused change. Do them in any order unless noted.
   - Background and bolts/frame unchanged (already correct from Phase 4d).
 - [x] **5b: Empty queue state** — "Queue is empty" text centered horizontally and vertically in the panel using a `Row` wrapper with `JustifyItemsCenter().FlexGrow(1f)`, matching the title bar centering pattern.
 - [x] **5c: Currently-researching item** — Separate "CURRENT RESEARCH" section above the queue with research name, native `ProgressBarPercentInline` progress bar (real-time updates, green/yellow state matching native `ResearchDetailUi`), down-arrow button (swap with queue top, conditional on queue having items), and cancel button (`ButtonIcon` with `Button.Danger`, cancels current and auto-starts next queued item without clearing the queue). Empty state shows "No research". Queue section renamed to "RESEARCH QUEUE" with "Empty" text when no items.
-- [ ] **5d: Remove from queue** — Add ✕ button per item. Wire to the game's dequeue command.
+- [x] **5d: Remove from queue** — *(Absorbed into Phase 6b — ✕ remove button included in the new drag-and-drop row layout.)*
 - [ ] **5e: Reactive updates** — Auto-refresh when queue changes externally. Research `ResearchManager` events; fall back to polling if none exist.
 - [ ] **5f: Reflection error handling** — try/catch around reflection access. Show "Queue unavailable" on failure.
 - [x] **5g: Visual polish — wider panel** — Read `MIN_WIDTH` static field from `ResearchDetailUi` via reflection at runtime (fallback 468px). Added `MaxWidth(25.Percent())` cap. Panel now matches native width exactly.
@@ -75,14 +75,21 @@ Each task is a single focused change. Do them in any order unless noted.
 - [ ] **5i: Visual polish — row spacing** — Increase padding/margins on queue rows for breathing room.
 - [ ] **5j: Save compatibility testing** — Test on fresh and existing saves. Install, reorder, save, reload, remove mod, reload.
 
-### Phase 6: Drag-and-drop reordering
-**Goal:** Replace arrow buttons with drag handles so players can drag queue items to reorder, matching the feel of the game's recipe reorder UI. Keep arrow buttons as a fallback if drag-and-drop proves infeasible.
+### Phase 6: Drag-and-drop reordering + row redesign
+**Goal:** Replace arrow buttons with drag-and-drop reordering, add promote-to-active and remove-from-queue buttons per row, and simplify the current research section. New queue row layout: `[ ≡ drag handle | "1. Name" | ▶ promote | ✕ remove ]`.
 
-- [ ] **6a: Research `Reorderable` manipulator** — Study `Mafi.Unity.UiToolkit.Component.Manipulators.Reorderable` in the DLL. Document: constructor params, required parent container setup, what events/callbacks it exposes for reorder completion, how the recipe list in building windows uses it.
-- [ ] **6b: Prototype drag handles** — Add a drag handle element to each queue row. Attach `Reorderable` manipulator. Get basic drag working (item visually moves) without wiring to actual reorder logic yet.
-- [ ] **6c: Wire drag completion to reorder** — When a drag completes, read the new visual order and call `MoveItem()` to update the actual game queue. Refresh the list.
-- [ ] **6d: Drag edge cases & polish** — Test: dragging first/last item, dragging to same position (no-op), visual feedback during drag (ghost/placeholder), scroll behavior when dragging near top/bottom of a long list.
-- [ ] **6e: Decide on arrow buttons** — Based on how drag-and-drop feels, decide whether to keep arrow buttons alongside drag handles, or remove them. Get user input.
+**Design decisions (agreed with user):**
+- Drag-and-drop for reordering within the queue (replaces ▲/▼ arrows entirely)
+- ▶ promote button per row: stops current research, puts it at queue position #1, starts the promoted item. Game's native auto-start handles the rest when research completes.
+- ✕ remove button per row: dequeues the item (absorbs task 5d)
+- Current research section: remove the ▼ swap button (redundant with per-row promote). Keep name, progress bar, and cancel button.
+- Keep numbered labels ("1. Name", "2. Name") for scannability
+
+- [x] **6a: Research `Reorderable` manipulator** — Fully decompiled and documented in MODDING-REFERENCE.md. Key findings: `Reorderable` is a public `Manipulator` class. Constructor takes `(VisualElement dragHandle, bool lockDragToAxis)`. Fires `OnOrderChanged(oldIndex, newIndex)` when drag completes. All draggable items must be direct children of the same container. Game uses it in 4+ places: `MachineRecipeUi` (recipe lists), `BufferUi` (launch pads), `ScheduleItemUi` (train schedules), `TrainPreviewCar` (train designer). `LeftDragHandle` is a pre-built drag handle widget. Built-in auto-scroll when inside `ScrollView`.
+- [x] **6b: Redesign queue rows with drag handles** — Replaced `BuildQueueRows` with new row layout: custom inline drag handle Column (styled like `LeftDragHandle` but flex-positioned), numbered label, ▶ promote `ButtonText`, ✕ remove `ButtonText`. Used `row.AddManipulator(reorderable)` (on `UiComponent`, not `RootElement`). Also completes task 5d.
+- [x] **6c: Wire all row interactions** — `OnOrderChanged` calls `MoveItem(oldIdx, newIdx)` then rebuilds UI. `PromoteToActive(index)` pops item, cancels current research if any, enqueues old current at front, starts promoted item. `RemoveFromQueue(index)` pops item. All three rebuild the queue list.
+- [x] **6d: Simplify current research section** — Removed ▼ swap button and `SwapCurrentWithQueueTop()` method. Current research section now has: name label, progress bar, cancel button only.
+- [x] **6e: In-game verification** — All tests pass: drag reorder works, promote swaps correctly (including single-item queue → empty state), remove dequeues, empty state displays, currently-researching section is not draggable.
 
 ### Phase 7: Nice-to-have enhancements
 Independent subtasks — do any/all based on user priority. No required order.
@@ -99,7 +106,13 @@ Independent subtasks — do any/all based on user priority. No required order.
 
 **Phase 5c: COMPLETE** — "CURRENT RESEARCH" section with live progress bar, cancel button, and conditional down-arrow for swapping with queue top. Uses native `ProgressBarPercentInline` from `Mafi.Unity.Ui.Library` with `DisplayState.Positive`/`Warning` matching native behavior. Cancel uses `IResearchNodeFriend.CancelResearch()` directly to preserve queue (unlike native `StopResearch()` which clears it).
 
+**Phase 5d: COMPLETE** — Absorbed into Phase 6b (✕ remove button included in the new row layout).
+
+**Phase 6: COMPLETE.** Drag-and-drop reordering with `Reorderable` manipulator, ▶ promote button (swaps with active research), ✕ remove button. Current research section simplified (▼ swap button removed). All verified in-game. Version bumped to 0.0.3.
+
 **Phase 5 in progress** — Remaining: 5d–5f, 5i, 5j.
+
+**Phase 6a: COMPLETE** — `Reorderable` manipulator fully researched and documented. Public class, straightforward API: create a drag handle element, pass to `new Reorderable(handle.RootElement)`, subscribe to `OnOrderChanged(oldIndex, newIndex)`, add manipulator to the row. Game's `LeftDragHandle` is a ready-made drag handle widget. Built-in auto-scroll for ScrollView containers. All 4 game consumers follow the same pattern.
 
 ## Phase Details
 
@@ -188,8 +201,7 @@ All steps below are implemented and working. See `ResearchReorderWindowControlle
 
 **Resolved risks:** ResearchWindow is NOT in `AllResolvedInstances` (only its Controller is) — resolved via Controller's `m_window` field. Parent container structure is a `Row` — confirmed. Escape behavior works correctly with no extra code.
 
-**Key API for Phase 6 (drag-and-drop):**
-- `Mafi.Unity.UiToolkit.Component.Manipulators.Reorderable` — **public class**, constructor: `(VisualElement dragHandle, bool lockDragToAxis)`. This is the same manipulator used by the recipe list in building windows (e.g., Assembly III). Extends `UnityEngine.UIElements.Manipulator`.
+**Key API for Phase 6 (drag-and-drop):** See MODDING-REFERENCE.md → "Built-in Reorder Support (Drag-and-Drop)" for full documentation of `Reorderable`, `LeftDragHandle`, usage patterns, and all game consumer examples.
 
 ## Technical Reference
 

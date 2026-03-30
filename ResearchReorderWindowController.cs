@@ -10,6 +10,7 @@ using Mafi.Unity.InputControl;
 using Mafi.Unity.Ui.Hud;
 using Mafi.Unity.Ui.Library;
 using Mafi.Unity.UiToolkit.Component;
+using Mafi.Unity.UiToolkit.Component.Manipulators;
 using Mafi.Unity.UiToolkit.Library;
 
 namespace ResearchReorder;
@@ -48,7 +49,6 @@ public class ResearchReorderWindowController {
 	private Label _currentResearchNameLabel;
 	private Column _currentResearchContent;   // Visible when research is active
 	private Label _noResearchLabel;           // Visible when no research
-	private ButtonText _downArrowBtn;
 	private PropertyInfo _currentResearchProp;   // Cached: CurrentResearch property on ResearchManager
 	private MethodInfo _refreshQueueMethod;      // Cached: refreshQueueValues() on ResearchManager
 
@@ -275,18 +275,11 @@ public class ResearchReorderWindowController {
 
 			_progressBar = new ProgressBarPercentInline();
 
-			var buttonsRow = new Row(1.pt());
-			buttonsRow.Margin(1.pt());
-
-			_downArrowBtn = new ButtonText(new LocStrFormatted("\u25bc"), () => SwapCurrentWithQueueTop());
-			_downArrowBtn.Size(new Px(30), new Px(24));
-
 			var cancelBtn = new ButtonIcon(Button.Danger,
 				"Assets/Unity/UserInterface/General/Cancel.svg",
 				() => CancelCurrentResearch());
 
-			buttonsRow.Add(_downArrowBtn, cancelBtn);
-			_currentResearchContent.Add(_currentResearchNameLabel, _progressBar, buttonsRow);
+			_currentResearchContent.Add(_currentResearchNameLabel, _progressBar, cancelBtn);
 
 			// Label shown when no research is active
 			_noResearchLabel = new Label(new LocStrFormatted("No research"));
@@ -339,7 +332,7 @@ public class ResearchReorderWindowController {
 		_embeddedRows.Clear();
 
 		var items = ReadQueueItems();
-		BuildQueueRows(_embeddedScroll, _embeddedRows, items, MoveItem);
+		BuildQueueRows(_embeddedScroll, _embeddedRows, items);
 	}
 
 	/// <summary>
@@ -370,10 +363,6 @@ public class ResearchReorderWindowController {
 			_progressBar.Value(progress);
 			bool hasLab = _researchMgr.HasActiveLab;
 			_progressBar.SetState(hasLab ? DisplayState.Positive : DisplayState.Warning);
-
-			// Down arrow only visible if queue has items to swap with
-			var queue = (Queueue<ResearchNode>)_queueField.GetValue(_researchMgr);
-			_downArrowBtn.SetVisible(queue.Count > 0);
 		} else {
 			_currentResearchContent.SetVisible(false);
 			_noResearchLabel.SetVisible(true);
@@ -486,39 +475,47 @@ public class ResearchReorderWindowController {
 	}
 
 	/// <summary>
-	/// Swaps the currently-researching item with the first item in the queue.
-	/// The old current goes to queue position 0, the old queue[0] becomes active.
+	/// Promotes a queue item to active research. The old active research (if any)
+	/// is placed at the front of the queue so it's next in line.
 	/// </summary>
-	private void SwapCurrentWithQueueTop() {
-		var currentOpt = _researchMgr.CurrentResearch;
-		if (!currentOpt.HasValue) return;
-
+	private void PromoteToActive(int queueIndex) {
 		var queue = (Queueue<ResearchNode>)_queueField.GetValue(_researchMgr);
-		if (queue.Count == 0) return;
+		if (queueIndex < 0 || queueIndex >= queue.Count) return;
 
-		var oldCurrent = currentOpt.ValueOrNull;
-		if (oldCurrent == null) return;
+		var promoted = queue.PopAt(queueIndex);
 
-		var newCurrent = queue.PopAt(0);
-
-		// Cancel old current research
-		((IResearchNodeFriend)oldCurrent).CancelResearch();
-
-		// Clear CurrentResearch via reflection (private setter)
-		var setter = _currentResearchProp?.GetSetMethod(true);
-		if (setter != null) {
-			setter.Invoke(_researchMgr, new object[] { Option<ResearchNode>.None });
+		// If something is currently being researched, cancel it and put it at queue front
+		var currentOpt = _researchMgr.CurrentResearch;
+		if (currentOpt.HasValue) {
+			var oldCurrent = currentOpt.ValueOrNull;
+			if (oldCurrent != null) {
+				((IResearchNodeFriend)oldCurrent).CancelResearch();
+				var setter = _currentResearchProp?.GetSetMethod(true);
+				if (setter != null) {
+					setter.Invoke(_researchMgr, new object[] { Option<ResearchNode>.None });
+				}
+				queue.EnqueueAt(oldCurrent, 0);
+			}
 		}
 
-		// Start the new current research
-		_researchMgr.TryStartResearch(newCurrent.Proto, out _);
-
-		// Put old current at the front of the queue
-		queue.EnqueueAt(oldCurrent, 0);
+		_researchMgr.TryStartResearch(promoted.Proto, out _);
 
 		_refreshQueueMethod?.Invoke(_researchMgr, null);
 		RefreshEmbeddedPanel();
-		Log.Info($"ResearchReorder: Swapped to '{newCurrent.Proto.Strings.Name.TranslatedString}'");
+		Log.Info($"ResearchReorder: Promoted '{promoted.Proto.Strings.Name.TranslatedString}' to active research");
+	}
+
+	/// <summary>
+	/// Removes an item from the research queue entirely.
+	/// </summary>
+	private void RemoveFromQueue(int queueIndex) {
+		var queue = (Queueue<ResearchNode>)_queueField.GetValue(_researchMgr);
+		if (queueIndex < 0 || queueIndex >= queue.Count) return;
+
+		var removed = queue.PopAt(queueIndex);
+		_refreshQueueMethod?.Invoke(_researchMgr, null);
+		RefreshEmbeddedPanel();
+		Log.Info($"ResearchReorder: Removed '{removed.Proto.Strings.Name.TranslatedString}' from queue");
 	}
 
 	/// <summary>
@@ -560,13 +557,13 @@ public class ResearchReorderWindowController {
 	}
 
 	/// <summary>
-	/// Builds numbered queue rows with arrow buttons into a target container.
+	/// Builds queue rows with drag handles for reordering, a promote button (▶)
+	/// to start researching that item, and a remove button (✕) to dequeue.
 	/// </summary>
-	private static void BuildQueueRows(
+	private void BuildQueueRows(
 		UiComponent container,
 		List<UiComponent> trackingList,
-		List<string> queueItems,
-		Action<int, int> onMoveRequested) {
+		List<string> queueItems) {
 
 		if (queueItems.Count == 0) {
 			var emptyLabel = new Label(new LocStrFormatted("Empty"));
@@ -583,28 +580,38 @@ public class ResearchReorderWindowController {
 			row.Margin(1.pt());
 			row.JustifyItemsCenter();
 
+			// Drag handle — styled like the game's LeftDragHandle but inline (not absolute-positioned)
+			var dragCol = new Column();
+			dragCol.Width(24.px()).AlignSelfStretch().JustifyItemsCenter()
+				.Background(3224115)
+				.BorderRight(1.px(), 2763306)
+				.BorderRadiusLeft(4)
+				.Padding(1.pt());
+			var gripLabel = new Label(new LocStrFormatted("\u2630")); // ☰ trigram icon
+			gripLabel.TextCenterMiddle().FontSize(10).Opacity(0.6f);
+			dragCol.Add(gripLabel);
+			row.Add(dragCol);
+
 			// Numbered label
 			string text = $"{i + 1}. {queueItems[i]}";
 			var label = new Label(new LocStrFormatted(text));
-			label.FontSize(15);
-			label.FlexGrow(1f);
+			label.FontSize(15).FlexGrow(1f).Margin(2.px());
 			row.Add(label);
 
-			// Move Up button (hidden for first item)
-			var upBtn = new ButtonText(new LocStrFormatted("\u25b2"), () => {
-				onMoveRequested?.Invoke(index, index - 1);
-			});
-			upBtn.Size(new Px(30), new Px(24));
-			if (i == 0) upBtn.SetVisible(false);
-			row.Add(upBtn);
+			// Promote button — start researching this item now
+			var promoteBtn = new ButtonText(new LocStrFormatted("\u25b6"), () => PromoteToActive(index));
+			promoteBtn.Size(new Px(30), new Px(24));
+			row.Add(promoteBtn);
 
-			// Move Down button (hidden for last item)
-			var downBtn = new ButtonText(new LocStrFormatted("\u25bc"), () => {
-				onMoveRequested?.Invoke(index, index + 1);
-			});
-			downBtn.Size(new Px(30), new Px(24));
-			if (i == queueItems.Count - 1) downBtn.SetVisible(false);
-			row.Add(downBtn);
+			// Remove button — dequeue this item
+			var removeBtn = new ButtonText(new LocStrFormatted("\u2715"), () => RemoveFromQueue(index));
+			removeBtn.Size(new Px(30), new Px(24));
+			row.Add(removeBtn);
+
+			// Wire up drag-and-drop reordering via the game's Reorderable manipulator
+			var reorderable = new Reorderable(dragCol.RootElement);
+			reorderable.OnOrderChanged += (oldIdx, newIdx) => MoveItem(oldIdx, newIdx);
+			row.AddManipulator(reorderable);
 
 			container.Add(row);
 			trackingList.Add(row);

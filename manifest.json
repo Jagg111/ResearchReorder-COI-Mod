@@ -1,6 +1,6 @@
 {
 	"id": "ResearchReorder",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"display_name": "Research Reorder",
 	"description_short": "Lets players reorder their research queue.",
 	"primary_dlls": [ "ResearchReorder.dll" ],

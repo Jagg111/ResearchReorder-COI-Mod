@@ -545,14 +545,178 @@ These events could be used to detect when the research window opens/closes witho
 1. We need to intercept `handleNodeClicked` to detect selection changes (polling `m_selectedNode` should work instead)
 2. We need to modify the Escape key behavior
 
-### Built-in Reorder Support
+### Built-in Reorder Support (Drag-and-Drop)
 
-The game has built-in reordering UI components:
-- `Mafi.Unity.UiToolkit.Component.Manipulators.Reorderable` — **public class**, drag-and-drop reorder manipulator
-  - Constructor: `ctor(VisualElement dragHandle, bool lockDragToAxis)`
-  - Extends `UnityEngine.UIElements.Manipulator`
-- `ReorderableMultiColumns` — used by `PinnedProductsHud` for multi-column reordering
-- Various `Reorder*Cmd` types: `ReorderCmd`, `ReorderRecipeCmd`, `ReorderTrainLineScheduleItemCmd`, etc.
+The game has a built-in `Reorderable` manipulator that provides drag-and-drop reordering for any list of UI elements. This is the same system used by building recipe lists (e.g., Assembly III), train schedule items, launch pad cargo buffers, and train car designers.
+
+#### `Reorderable` Class — Full API
+
+**Location:** `Mafi.Unity.UiToolkit.Component.Manipulators.Reorderable`
+**Visibility:** **Public class** — safe to use from mods.
+**Base class:** `UnityEngine.UIElements.Manipulator`
+
+**Constructor:**
+```csharp
+public Reorderable(VisualElement dragHandle = null, bool lockDragToAxis = true)
+```
+- `dragHandle` — the element the user grabs to start dragging. If `null`, the entire `target` element is the drag handle. When provided, drag start threshold is 1px (very responsive); when null, threshold is 5px (prevents accidental drags from clicks).
+- `lockDragToAxis` — if `true` (default), constrains dragging to the parent container's flex direction (vertical for Column, horizontal for Row). Almost always want `true`.
+
+**Events:**
+```csharp
+event Action<int, int> OnOrderChanged;  // (oldIndex, newIndex) — fired when drag completes at a new position
+event Action OnBeginDrag;               // fired when drag starts (after threshold met)
+event Action OnEndDrag;                 // fired when drag ends (whether position changed or not)
+```
+
+**How it works internally:**
+1. User presses on the `dragHandle` element → pointer captured
+2. User moves pointer past threshold → `OnDragStart()` fires:
+   - Records the starting index of `target` within its parent container
+   - Removes `target` from the container and places it in an absolute-positioned `m_dragTargetContainer`
+   - Inserts a `m_shadowSpace` placeholder (same size) at the original position
+   - Starts a `schedule.Execute()` loop for `dragUpdateLoop`
+3. During drag: the target container follows the cursor, and the shadow space swaps positions with sibling elements as the dragged item passes their center point (with hysteresis to prevent flickering)
+4. Auto-scrolling: if the parent is inside a `ScrollView`, automatically scrolls when dragging near the edges (proportional speed, 60–600px/s)
+5. On pointer up → `OnDragEnd()`: inserts `target` back at the shadow space's current position, fires `OnOrderChanged(oldIndex, newIndex)` if position changed
+
+**Key constraint:** The `Reorderable` manipulator operates on the **visual** children of `target.parent.contentContainer`. It reorders visual elements only. You must handle the data model update yourself in the `OnOrderChanged` callback.
+
+#### Usage Pattern — How the Game Uses It
+
+All game consumers follow the same pattern:
+
+```csharp
+// 1. Create a drag handle element (Column with drag icon, or any element)
+Column dragHandle = new Column();
+dragHandle.Class(Cls.reorderHandle, Cls.reorderHandleAlphaHover)
+    .Background(3224115)       // dark gray background
+    .BorderRight(1.px(), 2763306)
+    .BorderRadiusLeft(4)
+    .JustifyItemsCenter()
+    .Padding(1.pt());
+dragHandle.Add(new Icon("Assets/Unity/UserInterface/General/Drag.svg")
+    .Opacity(0.6f).Size(10.px()).AlignSelfCenter());
+
+// 2. Create the Reorderable manipulator with the drag handle's RootElement
+Reorderable reorderable = new Reorderable(dragHandle.RootElement);
+
+// 3. Subscribe to OnOrderChanged to update your data model
+reorderable.OnOrderChanged += (int oldIndex, int newIndex) => {
+    // Move item in your data structure from oldIndex to newIndex
+};
+
+// 4. Add the manipulator to the ROW element (the item being reordered)
+myRowElement.AddManipulator(reorderable);
+```
+
+**Important:** The manipulator is added to the **item** element (the row that gets dragged), but the **drag handle** passed to the constructor is the grab area. The item must be a direct child of the container whose children get reordered.
+
+#### Concrete Examples from the Game
+
+**1. Machine Recipe List (Assembly III, etc.) — `MachineRecipeUi`**
+```csharp
+// Drag handle is a Column with drag icon, positioned absolutely on the left
+Column column = new Column();
+column.Class(Cls.reorderHandle, Cls.reorderHandleAlphaHover)
+    .Background(3224115)
+    .BorderRight(HANDLE_COLUMN_BORDER, 2763306)
+    .BorderRadiusLeft(4)
+    .AbsolutePosition(top: 0.px(), bottom: 0.px(), left: 0.px())
+    .JustifyItemsCenter().Padding(HANDLE_PADDING);
+column.Add(new Icon("Assets/Unity/UserInterface/General/Drag.svg")
+    .Opacity(0.6f).Size(HANDLE_SIZE).AlignSelfCenter());
+MainRow.MarginLeft(HANDLE_COLUMN_TOTAL_WIDTH);  // offset content for the handle
+
+Reorderable reorderable = new Reorderable(column.RootElement);
+reorderable.OnOrderChanged += onReorder;  // Action<int, int>
+AddManipulator(reorderable);  // added to the MachineRecipeUi itself
+
+// The onReorder callback sends a command:
+onReorder = (oldIdx, newIdx) => {
+    ScheduleCommand(new ReorderRecipeCmd(entity.Id, oldIdx, newIdx));
+};
+```
+
+**2. Launch Pad Cargo Buffers — `BufferUi`**
+```csharp
+// Uses the pre-built LeftDragHandle component
+LeftDragHandle leftDragHandle = AddAndReturn(new LeftDragHandle());
+Reorderable reorderable = new Reorderable(leftDragHandle.RootElement);
+reorderable.OnOrderChanged += onReorder;
+AddManipulator(reorderable);
+```
+
+**3. Train Schedule Items — `ScheduleItemUi`**
+```csharp
+// Drag handle is a Column on the right side with CSS class
+Column column = new Column();
+column.Class(Cls.dragHandle).AlignSelfStretch();
+// Wrapped in a row with border and dark background
+
+Reorderable reorderable = new Reorderable(column.RootElement);
+reorderable.OnOrderChanged += (_, newIndex) => {
+    inputScheduler.ScheduleInputCmd(
+        new ReorderTrainLineScheduleItemCmd(scheduleItemId, newIndex));
+};
+AddManipulator(reorderable);
+```
+
+**4. Train Car Designer — `TrainPreviewCar`**
+```csharp
+// The icon itself is the drag handle (no separate handle element)
+m_icon = new Icon().Size(Px.Auto, HEIGHT).Class(Cls.reorderHandle);
+m_reorderable = new Reorderable(m_icon.RootElement);
+m_reorderable.OnOrderChanged += onOrderChanged;
+// Hides floater tooltip during drag:
+m_reorderable.OnBeginDrag += () => { optionalFloater = Option<UiComponent>.None; };
+m_reorderable.OnEndDrag += () => { optionalFloater = floater; };
+AddManipulator(m_reorderable);
+```
+
+#### Pre-Built Drag Handle: `LeftDragHandle`
+
+**Location:** `Mafi.Unity.Ui.Library.LeftDragHandle`
+**Base class:** `Column`
+
+A ready-made drag handle widget. Styled with dark background, right border, drag icon, absolute-positioned on the left side. Use this for the simplest integration:
+
+```csharp
+public class LeftDragHandle : Column
+{
+    public LeftDragHandle()
+    {
+        this.Class(Cls.reorderHandle, Cls.reorderHandleAlphaHover)
+            .Background(3224115)
+            .BorderRight(1.px(), 2763306)
+            .BorderRadiusLeft(4)
+            .AbsolutePosition(top: 0.px(), bottom: 0.px(), left: 0.px())
+            .JustifyItemsCenter().Padding(1.pt());
+        Add(new Icon("Assets/Unity/UserInterface/General/Drag.svg")
+            .Opacity(0.6f).Size(10.px()).AlignSelfCenter());
+    }
+}
+```
+
+#### CSS Classes for Drag Handles
+
+- `Cls.dragHandle` — used by train schedule items (simple drag area, no icon)
+- `Cls.reorderHandle` — used by recipe lists, launch pads, train cars (styled drag area)
+- `Cls.reorderHandleAlphaHover` — hover effect (increased opacity on hover)
+
+#### `ReorderableMultiColumns` (Private, Not Usable by Mods)
+
+`PinnedProductsHud.ReorderableMultiColumns` is a **private nested class** used for multi-column reordering in the pinned products sidebar. It implements its own drag logic (not using `Reorderable`) and redistributes items across columns. **Not accessible from mods** — included here for reference only.
+
+#### Key Design Notes for Our Research Queue
+
+1. **Container requirement:** All draggable items must be direct children of the same parent container. The `Reorderable` manipulator reads `target.parent.contentContainer.Children()` to find siblings.
+2. **Visual-only reorder:** `Reorderable` moves visual elements. Our `OnOrderChanged` callback must call our existing `MoveItem(oldIndex, newIndex)` helper (which uses `PopAt` + `EnqueueAt`).
+3. **ScrollView support:** Built-in auto-scroll when the list is inside a `ScrollView` and user drags near edges. Our `ScrollColumn` body should work automatically.
+4. **No data binding:** The manipulator doesn't know about our data. After the data model is updated, we should rebuild the visual list to ensure consistency (or trust the visual reorder if it matches the data operation).
+5. **`LeftDragHandle` is the easiest path:** Add a `LeftDragHandle` to each queue row, pass its `RootElement` to `new Reorderable(...)`, wire `OnOrderChanged` to our queue mutation logic.
+6. **`AddManipulator` is on `UiComponent`:** Call `row.AddManipulator(reorderable)` directly on the Mafi `UiComponent`, NOT on `row.RootElement`. Importing `UnityEngine.UIElements` causes namespace collisions with Mafi types (Label, Column, etc.). The `UiComponent.AddManipulator()` method delegates to the underlying `VisualElement` internally.
+7. **`LeftDragHandle` is absolute-positioned:** The `Cls.reorderHandle` CSS class positions the handle absolutely. For inline flex-child drag handles, create a custom `Column` with the same visual styling (background `3224115`, border-right `1px 2763306`, border-radius-left 4, padding 1pt) but without `Cls.reorderHandle`.
 
 ## UI Window Patterns (Update 4)
 
