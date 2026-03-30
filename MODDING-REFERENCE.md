@@ -1237,9 +1237,57 @@ scroll.Clear()                             // Remove all children
 | `AlignItemsStretch()` | Stretch children to fill cross-axis |
 | `JustifyItemsCenter()` | Center children along main axis |
 | `Wrap()` | Enable flex wrap |
-| `StyleGroup()` | Apply grouped visual style (subtle background) |
+| `StyleGroup()` | Apply native `Cls.group` USS class — dark background + border (see below) |
 | `Border(int, ColorRgba, int)` | Border width, color, radius |
 | `Background(ColorRgba)` | Set background color |
+
+### StyleGroup — Native Row Styling
+
+`StyleGroup()` (extension method in `Mafi.Unity.UiToolkit.StyleExtensions`) applies the `Cls.group` USS class to any `UiComponent`. This is the standard way the game gives rows/containers a darker background with a subtle border — used in recipe rows, train UIs, codex entries, sandbox panels, etc.
+
+```csharp
+using Mafi.Unity.UiToolkit; // Required for StyleGroup() and Cls
+
+// Apply native dark background + border to a row:
+row.StyleGroup();
+
+// Common pattern: StyleGroup + padding (group class does NOT add padding)
+row.StyleGroup().Padding(2.pt());
+```
+
+The `Cls.group` USS class is defined in the game's embedded USS stylesheets (not accessible directly). The visual effect is: slightly darker background fill + thin border outline, matching the native game chrome.
+
+**Source:** `RecipeUi.AddBackground()` calls `this.StyleGroup()` — this is what gives assembler recipe rows their dark background.
+
+### LeftDragHandle — Native Drag Handle
+
+`LeftDragHandle` (`Mafi.Unity.Ui.Library`) is the game's standard drag handle component. It uses absolute positioning and the proper drag SVG icon.
+
+```csharp
+// LeftDragHandle constructor (decompiled):
+this.Class(Cls.reorderHandle, Cls.reorderHandleAlphaHover)
+    .Background(3224115)           // Dark handle background
+    .BorderRight(1.px(), 2763306)  // 1px right border separator
+    .BorderRadiusLeft(4)           // Rounded left corners
+    .AbsolutePosition(top: 0, bottom: 0, left: 0)  // Anchored to left edge
+    .JustifyItemsCenter()
+    .Padding(1.pt());
+
+// Contains: Icon("Assets/Unity/UserInterface/General/Drag.svg").Opacity(0.6f).Size(10.px())
+```
+
+**Key constants from `MachineRecipeUi`:**
+```csharp
+HANDLE_PADDING = 1.pt()
+HANDLE_SIZE = 10.px()
+HANDLE_COLUMN_BORDER = 1.px()
+HANDLE_COLUMN_RECIPE_SPACING = 1.pt()
+HANDLE_COLUMN_TOTAL_WIDTH = HANDLE_PADDING * 2 + HANDLE_COLUMN_RECIPE_SPACING + HANDLE_COLUMN_BORDER + HANDLE_SIZE
+```
+
+**CSS classes:** `Cls.reorderHandle` provides base styling, `Cls.reorderHandleAlphaHover` adds opacity increase on hover.
+
+**Drag SVG icon path:** `"Assets/Unity/UserInterface/General/Drag.svg"`
 
 ### Localization Strings (`Mafi.Core.Tr`)
 

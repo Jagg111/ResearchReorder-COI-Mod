@@ -10,6 +10,7 @@ using Mafi.Unity;
 using Mafi.Unity.InputControl;
 using Mafi.Unity.Ui.Hud;
 using Mafi.Unity.Ui.Library;
+using Mafi.Unity.UiToolkit;
 using Mafi.Unity.UiToolkit.Component;
 using Mafi.Unity.UiToolkit.Component.Manipulators;
 using Mafi.Unity.UiToolkit.Library;
@@ -293,6 +294,7 @@ public class ResearchReorderWindowController {
 
 			_embeddedScroll = new ScrollColumn();
 			_embeddedScroll.FlexGrow(1f);
+			_embeddedScroll.MaxHeight(320.px()); // Match native ResearchDetailUi MAX_RECIPES_HEIGHT
 
 			// Assemble everything
 			contentCol.Add(titleRow);
@@ -579,19 +581,21 @@ public class ResearchReorderWindowController {
 			int index = i; // capture for closure
 
 			var row = new Row(1.pt());
-			row.Margin(1.pt());
+			row.MarginBottom(3.px());
 			row.JustifyItemsCenter();
+			row.StyleGroup(); // Native dark background + border (same as recipe rows)
 
-			// Drag handle — styled like the game's LeftDragHandle but inline (not absolute-positioned)
+			// Drag handle — styled with native CSS classes and SVG icon
 			var dragCol = new Column();
 			dragCol.Width(24.px()).AlignSelfStretch().JustifyItemsCenter()
+				.Class(Cls.reorderHandle, Cls.reorderHandleAlphaHover)
 				.Background(3224115)
 				.BorderRight(1.px(), 2763306)
 				.BorderRadiusLeft(4)
 				.Padding(1.pt());
-			var gripLabel = new Label(new LocStrFormatted("\u2630")); // ☰ trigram icon
-			gripLabel.TextCenterMiddle().FontSize(10).Opacity(0.6f);
-			dragCol.Add(gripLabel);
+			var dragIcon = new Icon("Assets/Unity/UserInterface/General/Drag.svg");
+			dragIcon.Opacity(0.6f).Size(10.px()).AlignSelfCenter();
+			dragCol.Add(dragIcon);
 			row.Add(dragCol);
 
 			// Research name label
