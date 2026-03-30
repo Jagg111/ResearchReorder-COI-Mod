@@ -1241,12 +1241,35 @@ scroll.Clear()                             // Remove all children
 | `Border(int, ColorRgba, int)` | Border width, color, radius |
 | `Background(ColorRgba)` | Set background color |
 
+### Localization Strings (`Mafi.Core.Tr`)
+
+The game's built-in translated strings live in the `Tr` static class in the `Mafi.Core` namespace. Fields are `LocStr` type (from `Mafi.Localization`). Using these ensures button text and labels match the native UI and auto-translate for non-English players.
+
+```csharp
+using Mafi.Core;           // Required for Tr access
+using Mafi.Localization;   // Required for LocStr type
+
+// Example fields used in ResearchDetailUi:
+Tr.StartResearch_Action    // "Start research"
+Tr.ResearchQueue__Add      // "Add to queue"
+Tr.ResearchQueue__Remove   // "Remove from queue"
+Tr.ResearchQueue__Status   // Queue position format string (LocStr1)
+Tr.ResearchProgress        // "Research progress"
+Tr.Requires                // "Requires"
+Tr.Unlocks                 // "Unlocks"
+Tr.Recipes__New            // "New recipes"
+Tr.NoLabAvailable          // "No lab available"
+Tr.ResearchFinished        // "Research finished"
+Tr.Locked                  // "Locked"
+Tr.Research_AccBonus       // Acceleration bonus label
+```
+
 ### Button Styles (from decompiled `ResearchDetailUi`)
 
 ```csharp
-new ButtonText(Button.Primary, Tr.StartResearch_Action)    // Green/primary styled button
+new ButtonText(Button.Primary, Tr.StartResearch_Action)    // Yellow/primary styled button (renders yellow in-game, not green)
 new ButtonIcon(Button.Danger, "path/to/icon.svg")          // Red/danger styled button
-new ButtonText(Tr.ResearchQueue__Remove)                   // Default (unstyled) button
+new ButtonText(Tr.ResearchQueue__Remove)                   // Default (unstyled/gray) button
 button.OnClick((Action)delegate { /* handler */ }, allowKeyPresses: false)
 button.Enabled(bool)                                       // Enable/disable
 ```
@@ -1349,7 +1372,7 @@ Static `ButtonVariant` fields on `Button` class:
 
 | Field | Use |
 |-------|-----|
-| `Button.Primary` | Main action (styled, bold) |
+| `Button.Primary` | Main action (styled, yellow in-game) |
 | `Button.General` | Standard button |
 | `Button.Danger` | Destructive action (red) |
 | `Button.Warning` | Caution action (yellow) |
@@ -1357,11 +1380,26 @@ Static `ButtonVariant` fields on `Button` class:
 | `Button.IconOnlyDanger` | Icon-only, danger style |
 
 ```csharp
-// Icon button with danger styling (e.g., cancel button)
+// Icon button with danger styling (red square X — used in native ResearchDetailUi)
 var cancelBtn = new ButtonIcon(Button.Danger,
     "Assets/Unity/UserInterface/General/Cancel.svg",
     () => { /* onClick */ });
+
+// Styled text button with variant + LocStr (accepts LocStr directly from Tr)
+var startBtn = new ButtonText(Button.Primary, Tr.StartResearch_Action);
+startBtn.OnClick((Action)(() => { /* handler */ }), allowKeyPresses: false);
+
+// Default/gray text button (no variant = unstyled)
+var removeBtn = new ButtonText(Tr.ResearchQueue__Remove);
+removeBtn.OnClick((Action)(() => { /* handler */ }), allowKeyPresses: false);
+
+// Styled text button with variant + LocStrFormatted (for custom/dynamic text)
+var customBtn = new ButtonText(Button.Primary, new LocStrFormatted("custom text"));
+customBtn.OnClick((Action)(() => { /* handler */ }), allowKeyPresses: false);
 ```
+
+**Layout helpers verified in-game:**
+- `.AlignSelfCenter()` — centers a button within a `Column` (prevents stretch-to-fill)
 
 ### Approaches That DO NOT Work in Update 4
 

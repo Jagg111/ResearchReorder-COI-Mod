@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Mafi;
 using Mafi.Collections;
+using Mafi.Core;
 using Mafi.Core.Research;
 using Mafi.Localization;
 using Mafi.Unity;
@@ -278,6 +279,7 @@ public class ResearchReorderWindowController {
 			var cancelBtn = new ButtonIcon(Button.Danger,
 				"Assets/Unity/UserInterface/General/Cancel.svg",
 				() => CancelCurrentResearch());
+			cancelBtn.AlignSelfCenter();
 
 			_currentResearchContent.Add(_currentResearchNameLabel, _progressBar, cancelBtn);
 
@@ -592,20 +594,19 @@ public class ResearchReorderWindowController {
 			dragCol.Add(gripLabel);
 			row.Add(dragCol);
 
-			// Numbered label
-			string text = $"{i + 1}. {queueItems[i]}";
-			var label = new Label(new LocStrFormatted(text));
+			// Research name label
+			var label = new Label(new LocStrFormatted(queueItems[i]));
 			label.FontSize(15).FlexGrow(1f).Margin(2.px());
 			row.Add(label);
 
 			// Promote button — start researching this item now
-			var promoteBtn = new ButtonText(new LocStrFormatted("\u25b6"), () => PromoteToActive(index));
-			promoteBtn.Size(new Px(30), new Px(24));
+			var promoteBtn = new ButtonText(Button.Primary, new LocStrFormatted("\u25b6"));
+			promoteBtn.OnClick((Action)(() => PromoteToActive(index)), allowKeyPresses: false);
 			row.Add(promoteBtn);
 
-			// Remove button — dequeue this item
-			var removeBtn = new ButtonText(new LocStrFormatted("\u2715"), () => RemoveFromQueue(index));
-			removeBtn.Size(new Px(30), new Px(24));
+			// Remove button — gray text button matching native ResearchDetailUi "Remove from queue"
+			var removeBtn = new ButtonText(Tr.ResearchQueue__Remove);
+			removeBtn.OnClick((Action)(() => RemoveFromQueue(index)), allowKeyPresses: false);
 			row.Add(removeBtn);
 
 			// Wire up drag-and-drop reordering via the game's Reorderable manipulator
