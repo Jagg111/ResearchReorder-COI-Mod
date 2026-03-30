@@ -3,6 +3,6 @@ obj/
 *.user
 *.suo
 .vs/
-*.pdb
-.claude/settings.local.json
-.claude/settings.json
+githubrelease/
+screenshots/temp/
+.claude/

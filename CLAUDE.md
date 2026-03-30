@@ -45,13 +45,22 @@ On build, the mod is automatically deployed to `%APPDATA%\Captain of Industry\Mo
 - `manifest.json` — mod metadata
 - `ResearchQueue.pdb` — debug symbols (Debug builds only)
 
+## GitHub Release Packaging
+
+- `manifest.json` version is the source of truth for release packaging, tags, and release titles
+- When `manifest.json` is version-bumped for a functional release, generate a fresh package with:
+  - `.\create-github-release.ps1`
+- The script creates a local, gitignored `githubrelease\` folder containing:
+  - `ResearchQueue\ResearchQueue.dll`
+  - `ResearchQueue\manifest.json`
+  - a versioned zip ready for GitHub Releases
+  - `release-notes.md` generated from git history
+- Default behavior is to create a GitHub draft release through the terminal using `gh`
+- Use `.\create-github-release.ps1 -PackageOnly` when you want the zip and notes without creating the draft release yet
+
 ## Modding Reference
 
 For detailed game API docs, modding patterns, reflection examples, and UI patterns (all verified against Update 4 DLLs), see **MODDING-REFERENCE.md**.
-
-## Implementation Progress
-
-For the phased implementation plan, task tracking, and technical discoveries, see **IMPLEMENTATION-PLAN.md**. Current status: **Phases 1-4 complete, Phase 5 up next** (core polish).
 
 ## Mod Goal & Player Experience
 
@@ -59,23 +68,11 @@ For the phased implementation plan, task tracking, and technical discoveries, se
 
 **Target feature:** Drag-and-drop reordering of the research queue, surfaced inside the existing research tree screen (the screen shown when you click the beaker icon).
 
-**Scope decisions:**
-- Queue reordering only (not tree layout changes)
-- Single-player only (COI has no multiplayer)
-- Any item can be moved anywhere; moving the currently-in-progress item changes the active research (verified working)
-- Drag-and-drop preferred; arrow buttons as fallback if drag-and-drop is too complex
-- Phased approach: core reorder logic first → move-up/move-down buttons → upgrade to drag-and-drop
-
 **Save compatibility (critical):**
 - Mod must work on existing saves (no new game required to use it)
 - If mod is removed, queue remains in whatever order it was last left in — player just loses the ability to reorder
 - Do NOT store queue order in a separate mod-owned file; queue state must live entirely in the game's own save data
 - Implementation: manipulate the game's internal queue directly via reflection, not a parallel data structure
-
-**UI context from screenshot:**
-- Top-left hover tooltip over the beaker icon shows: "Current research: X" and "Research queue: item1, item2..."
-- Right panel shows selected tech details with "In queue (N)" and "Remove from queue" button
-- The queue panel/tooltip is where reordering UI should live
 
 ## Working Style Notes
 
@@ -84,13 +81,13 @@ For the phased implementation plan, task tracking, and technical discoveries, se
 - Always update `manifest.json` version when making functional changes
 - The `COI_ROOT` env var must be set for builds to work
 - Ask clarifying questions before writing code; document answers in this file
+- **GitHub Issues:** Before starting any bug fix or feature work, check `gh issue list` for a related open issue. If one exists, remind the user so commit messages can include `Fixes #N` (or `Closes #N` / `Resolves #N`) — GitHub auto-closes the issue when the commit lands on `main`
 
 ## Documentation Rules (IMPORTANT)
 
 Whenever we discover something new about how the game works, its APIs, types, method signatures, or modding patterns — **always update the relevant docs without being asked**:
 
 - **MODDING-REFERENCE.md** — Game API discoveries, type signatures, working code patterns, gotchas, and corrections to previous assumptions. This is the technical encyclopedia.
-- **IMPLEMENTATION-PLAN.md** — Task checklist updates (mark items done, add new tasks), phase status changes, new open questions, and any change to the implementation strategy.
 - **CLAUDE.md** — Update if project-level info changes (mod type, structure, scope decisions, etc.)
 
 Do not wait for the user to prompt for doc updates. If we learn it, we document it.
