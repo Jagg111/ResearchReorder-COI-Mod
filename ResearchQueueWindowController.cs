@@ -45,6 +45,8 @@ public class ResearchQueueWindowController {
 	private FieldInfo _selectedNodeField;      // m_selectedNode field on ResearchWindow
 	private PropertyInfo _hasValueProp;        // HasValue property on Option<ResearchNodeUi>
 	private bool _pollingActive;
+	private int _lastKnownQueueCount = -1;
+	private Option<ResearchNode> _lastKnownCurrentResearch;
 
 	// Phase 5c: Current research section
 	private ProgressBarPercentInline _progressBar;
@@ -326,6 +328,13 @@ public class ResearchQueueWindowController {
 	private void RefreshEmbeddedPanel() {
 		if (_embeddedScroll == null) return;
 
+		// Sync cached state so CheckForQueueChanges doesn't re-trigger
+		if (_queueField != null) {
+			var queue = (Queueue<ResearchNode>)_queueField.GetValue(_researchMgr);
+			_lastKnownQueueCount = queue.Count;
+		}
+		_lastKnownCurrentResearch = _researchMgr.CurrentResearch;
+
 		// Update current research display
 		UpdateCurrentResearchSection();
 
@@ -400,6 +409,7 @@ public class ResearchQueueWindowController {
 		try {
 			UpdatePanelVisibility();
 			UpdateProgressBar();
+			CheckForQueueChanges();
 		} catch (Exception ex) {
 			Log.Warning($"ResearchQueue: Visibility poll error: {ex.Message}");
 			_pollingActive = false;
@@ -414,13 +424,16 @@ public class ResearchQueueWindowController {
 		if (optionVal == null) return;
 
 		bool nodeSelected = (bool)_hasValueProp.GetValue(optionVal);
-
+		bool wasVisible = _injectedPanel.IsVisible();
 		if (nodeSelected) {
 			if (_researchDetailUi != null && _researchDetailUi.IsVisible()) {
 				_injectedPanel.SetVisible(false);
 			}
 		} else {
 			_injectedPanel.SetVisible(true);
+			if (!wasVisible) {
+				RefreshEmbeddedPanel();
+			}
 			if (_researchDetailUi != null) {
 				_researchDetailUi.SetVisible(false);
 			}
@@ -443,6 +456,29 @@ public class ResearchQueueWindowController {
 		_progressBar.Value(node.ProgressInPerc);
 		bool hasLab = _researchMgr.HasActiveLab;
 		_progressBar.SetState(hasLab ? DisplayState.Positive : DisplayState.Warning);
+	}
+
+	/// <summary>
+	/// Detects external queue changes (e.g. player adding research via the native UI)
+	/// by comparing the current queue count and active research against cached values.
+	/// Triggers a full panel refresh when a change is detected.
+	/// </summary>
+	private void CheckForQueueChanges() {
+		if (_queueField == null || !_injectedPanel.IsVisible()) return;
+
+		var queue = (Queueue<ResearchNode>)_queueField.GetValue(_researchMgr);
+		var currentResearch = _researchMgr.CurrentResearch;
+
+		bool changed = queue.Count != _lastKnownQueueCount
+			|| currentResearch.HasValue != _lastKnownCurrentResearch.HasValue
+			|| (currentResearch.HasValue && _lastKnownCurrentResearch.HasValue
+				&& currentResearch.ValueOrNull != _lastKnownCurrentResearch.ValueOrNull);
+
+		if (changed) {
+			_lastKnownQueueCount = queue.Count;
+			_lastKnownCurrentResearch = currentResearch;
+			RefreshEmbeddedPanel();
+		}
 	}
 
 	/// <summary>

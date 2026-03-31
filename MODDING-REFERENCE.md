@@ -95,6 +95,7 @@ The queue is `Queueue<ResearchNode>` (`Mafi.Collections.Queueue`), a custom Mafi
 - Save/reload preserves the reordered queue — the game serializes `m_researchQueue` as-is
 - Currently-researching item (`CurrentResearch`) is NOT disrupted by reordering the queue behind it
 - No events or notifications need to be fired after mutation — the game reads the queue state directly
+- `ResearchManager` exposes NO events/callbacks for queue changes — detecting external changes requires polling (see "Detecting external queue/state changes" below)
 
 ## Modding API Resources
 
@@ -470,6 +471,40 @@ private void Poll() {
 
 // To stop: set _pollingActive = false (e.g., in OnControllerDeactivated)
 ```
+
+**Detecting external queue/state changes** — `ResearchManager` exposes no events or callbacks for queue mutations. The game's own UI uses `Observe().Do()` chains on individual `ResearchNode` properties (like `State`), but there is no observable for queue-level changes (items added/removed). Two complementary polling strategies cover all cases:
+
+1. **Per-frame content check:** Compare cached queue count and current research identity against live values. Cheap (integer + reference comparison) and catches changes while your panel is visible:
+```csharp
+private int _lastKnownQueueCount = -1;
+private Option<ResearchNode> _lastKnownCurrentResearch;
+
+private void CheckForQueueChanges() {
+    if (!_panel.IsVisible()) return;
+    var queue = (Queueue<ResearchNode>)_queueField.GetValue(_researchMgr);
+    var current = _researchMgr.CurrentResearch;
+    bool changed = queue.Count != _lastKnownQueueCount
+        || current.HasValue != _lastKnownCurrentResearch.HasValue
+        || (current.HasValue && _lastKnownCurrentResearch.HasValue
+            && current.ValueOrNull != _lastKnownCurrentResearch.ValueOrNull);
+    if (changed) {
+        _lastKnownQueueCount = queue.Count;
+        _lastKnownCurrentResearch = current;
+        RefreshPanel();
+    }
+}
+```
+
+2. **Hidden→visible transition refresh:** When your panel was hidden (e.g., player was viewing a research node's detail panel), changes may have occurred that the per-frame check skipped. Refresh on the visibility transition:
+```csharp
+bool wasVisible = _panel.IsVisible();
+// ... visibility logic sets panel visible ...
+if (!wasVisible) {
+    RefreshPanel(); // picks up any changes that happened while hidden
+}
+```
+
+Both strategies together ensure the panel always shows current data regardless of when/how the queue was modified.
 
 **Panel visibility coordination (asymmetric toggle)** — When swapping between two panels (e.g., a custom panel and `ResearchDetailUi`), naive `SetVisible` calls cause 1-frame flicker. The fix is to treat each direction differently:
 - **Hiding game panel (deselect):** Force-hide `ResearchDetailUi` immediately, show your panel. Prevents both panels showing for 1 frame.
