@@ -78,10 +78,28 @@ For detailed game API docs, modding patterns, reflection examples, and UI patter
 
 - User is not a programmer — explain what code does in plain language when making changes
 - Keep the mod focused and simple — one clear purpose
-- Always update `manifest.json` version when making functional changes
+- **Version bumping:** See the Versioning section below for full details. If a session involves code changes, **proactively ask the user whether a version bump should be included before the session ends**. If the user confirms a bump, also run `.\create-github-release.ps1` to create a GitHub draft release automatically so the user can go straight to GitHub and approve it.
 - The `COI_ROOT` env var must be set for builds to work
 - Ask clarifying questions before writing code; document answers in this file
 - **GitHub Issues:** Before starting any bug fix or feature work, check `gh issue list` for a related open issue. If one exists, remind the user so commit messages can include `Fixes #N` (or `Closes #N` / `Resolves #N`) — GitHub auto-closes the issue when the commit lands on `main`
+
+## Versioning
+
+This project uses **Semantic Versioning** (`MAJOR.MINOR.PATCH`):
+
+- **Patch (0.0.X)** — Bug fixes and small tweaks. **When in doubt, bump this one.** Examples: fixing items not showing up, correcting a visual glitch, small behavior fix.
+- **Minor (0.X.0)** — New features a player would notice. Resets patch to 0. Examples: adding drag-and-drop, adding a new button or UI element, adding a new capability.
+- **Major (X.0.0)** — Reserved for major milestones or breaking changes. Resets minor and patch to 0. Examples: mod reaching "complete" status (1.0.0), a game update forcing a major rewrite that changes how the mod works for the player.
+
+**Rules:**
+- Do NOT bump for docs-only, build script, or comment-only changes
+- If unsure whether something is a minor or patch, **it's a patch**
+- `manifest.json` version is always the source of truth
+
+**End-of-session workflow:**
+1. If code changes were made during the session, ask the user if a version bump is needed
+2. If yes, bump `manifest.json`, commit the change, and run `.\create-github-release.ps1` to create a GitHub draft release
+3. The user can then go directly to GitHub and approve the draft
 
 ## Documentation Rules (IMPORTANT)
 
