@@ -188,7 +188,7 @@ if ($knownIssueBullets.Count -gt 0) {
 $notes += @(
     "",
     "## $emojiPackage Installation",
-    "1. $emojiDownArrow Download the **ResearchQueue.zip** file below",
+    "1. $emojiDownArrow Download the **``$modId-$tag.zip``** file below",
     "2. Extract the zip file",
     "3. Copy the **``ResearchQueue``** folder into your mods directory:",
     "   ``````",
