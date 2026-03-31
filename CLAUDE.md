@@ -82,6 +82,7 @@ For detailed game API docs, modding patterns, reflection examples, and UI patter
 - The `COI_ROOT` env var must be set for builds to work
 - Ask clarifying questions before writing code; document answers in this file
 - **GitHub Issues:** Before starting any bug fix or feature work, check `gh issue list` for a related open issue. If one exists, remind the user so commit messages can include `Fixes #N` (or `Closes #N` / `Resolves #N`) — GitHub auto-closes the issue when the commit lands on `main`
+- **Commit messages:** Single line describing what changed. No body text. For sessions related to github issues append `Fixes #N` for bug issues or `Closes #N` for enhancement issues.
 
 ## Versioning
 
