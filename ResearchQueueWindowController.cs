@@ -617,6 +617,27 @@ public class ResearchQueueWindowController {
 	}
 
 	/// <summary>
+	/// Checks if a queue item is "out of order" — meaning it sits above an
+	/// unresearched prerequisite in the queue. When the game processes the queue
+	/// on research completion, out-of-order items get dequeued and silently
+	/// discarded because they can't be started yet (see issue #3).
+	/// Returns the name of the blocking prerequisite found later in the queue,
+	/// or null if the item is in a safe position.
+	/// </summary>
+	private static string GetOutOfOrderPrereqName(
+		ResearchNode node, int queueIndex, List<ResearchNode> queueNodes) {
+		foreach (var parent in node.Parents) {
+			if (parent.TimesResearched > 0) continue; // already researched, safe
+			for (int j = queueIndex + 1; j < queueNodes.Count; j++) {
+				if (ReferenceEquals(queueNodes[j], parent)) {
+					return parent.Proto.Strings.Name.TranslatedString;
+				}
+			}
+		}
+		return null;
+	}
+
+	/// <summary>
 	/// Builds queue rows with drag handles for reordering, a promote button (▶)
 	/// to start researching that item, and a remove button (✕) to dequeue.
 	/// Items whose prerequisites aren't met show a "Needs: X" label instead of
@@ -639,8 +660,9 @@ public class ResearchQueueWindowController {
 			int index = i; // capture for closure
 			var node = queueNodes[i];
 			bool isLocked = node.IsLocked;
+			string outOfOrderPrereq = GetOutOfOrderPrereqName(node, i, queueNodes);
 
-			var row = new Row(1.pt());
+			var row = new Row(0.pt());
 			row.MarginBottom(3.px());
 			row.JustifyItemsCenter();
 			row.StyleGroup(); // Native dark background + border (same as recipe rows)
@@ -658,30 +680,45 @@ public class ResearchQueueWindowController {
 			dragCol.Add(dragIcon);
 			row.Add(dragCol);
 
+			// Content area — tinted for out-of-order items, flush against drag handle
+			var contentRow = new Row(1.pt());
+			contentRow.FlexGrow(1f).AlignSelfStretch().JustifyItemsCenter();
+			if (outOfOrderPrereq != null) {
+				contentRow.Background(new ColorRgba(15166315, 40)); // LOCKED_COLOR
+			}
+
 			// Research name label
 			var label = new Label(new LocStrFormatted(
 				node.Proto.Strings.Name.TranslatedString));
 			label.FontSize(15).FlexGrow(1f).Margin(2.px());
-			row.Add(label);
+			contentRow.Add(label);
 
-			if (isLocked) {
-				// Show why this item can't be started
+			if (outOfOrderPrereq != null) {
+				// Out-of-order warning: this item sits above a prerequisite in the queue.
+				// If the game processes the queue before that prereq finishes, this item
+				// will be silently removed (issue #3).
+				var warnLabel = new Label(new LocStrFormatted($"Move below: {outOfOrderPrereq}"));
+				warnLabel.FontSize(12).Margin(2.px());
+				contentRow.Add(warnLabel);
+			} else if (isLocked) {
+				// Locked but not out-of-order — prereqs exist but aren't in the queue
 				var blockerName = GetFirstUnresearchedParentName(node) ?? "prerequisites";
 				var needsLabel = new Label(new LocStrFormatted($"Needs: {blockerName}"));
 				needsLabel.FontSize(12).Opacity(0.6f).Margin(2.px());
-				row.Add(needsLabel);
+				contentRow.Add(needsLabel);
 			} else {
 				// Promote button — start researching this item now
 				var promoteBtn = new ButtonText(Button.Primary, new LocStrFormatted("\u25b6"));
 				promoteBtn.OnClick((Action)(() => PromoteToActive(index)), allowKeyPresses: false);
-				row.Add(promoteBtn);
+				contentRow.Add(promoteBtn);
 			}
 
 			// Remove button — compact red X icon matching the current research cancel button
 			var removeBtn = new ButtonIcon(Button.Danger,
 				"Assets/Unity/UserInterface/General/Cancel.svg",
 				() => RemoveFromQueue(index));
-			row.Add(removeBtn);
+			contentRow.Add(removeBtn);
+			row.Add(contentRow);
 
 			// Wire up drag-and-drop reordering via the game's Reorderable manipulator
 			var reorderable = new Reorderable(dragCol.RootElement);
