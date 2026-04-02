@@ -10,6 +10,7 @@ The user developing the mod and prompting is a non-programmer (technical product
 
 - **Author:** Jagg111
 - **Mod ID:** `ResearchQueue`
+- **GitHub repo:** `Jagg111/COI-ResearchQueue`
 - **Game:** Captain of Industry (Update 4+)
 - **Framework:** Mafi (.NET 4.8)
 - **Mod type:** `IMod` (upgraded from DataOnlyMod to access Initialize() and DI)
@@ -33,10 +34,11 @@ obj/                         # Build intermediates (gitignored)
 - `COI_MODS` — auto-set to `%APPDATA%\Captain of Industry\Mods` in the .csproj
 
 ### Build
-Open `ResearchQueue.sln` in Visual Studio and build, or run:
+Open `ResearchQueue.sln` in Visual Studio and build, or run from `C:\Code\CaptainOfIndustry`:
 ```
-dotnet build /p:LangVersion=latest
+dotnet build ResearchQueue.sln
 ```
+Note: always specify `ResearchQueue.sln` explicitly and run from the project root. Do not pass `/p:LangVersion=latest` — it breaks argument parsing with `dotnet build`.
 
 On build, the mod is automatically deployed to `%APPDATA%\Captain of Industry\Mods\ResearchQueue\`.
 
