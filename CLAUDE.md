@@ -48,15 +48,15 @@ On build, the mod is automatically deployed to `%APPDATA%\Captain of Industry\Mo
 ## GitHub Release Packaging
 
 - `manifest.json` version is the source of truth for release packaging, tags, and release titles
-- When `manifest.json` is version-bumped for a functional release, generate a fresh package with:
-  - `.\create-github-release.ps1`
-- The script creates a local, gitignored `githubrelease\` folder containing:
+- **The canonical release workflow is `/ship`** — a Claude Code skill that handles everything end-to-end (see `.claude/skills/ship/SKILL.md`)
+- The script `.\create-github-release.ps1` is the underlying packaging tool called by `/ship`. It can also be run standalone:
+  - `.\create-github-release.ps1` — builds, packages, and creates a GitHub draft release
+  - `.\create-github-release.ps1 -PackageOnly` — builds and packages only (no GitHub release), useful for inspecting output
+- The script creates a local, gitignored `bin\githubrelease\` folder containing:
   - `ResearchQueue\ResearchQueue.dll`
   - `ResearchQueue\manifest.json`
   - a versioned zip ready for GitHub Releases
-  - `release-notes.md` generated from git history
-- Default behavior is to create a GitHub draft release through the terminal using `gh`
-- Use `.\create-github-release.ps1 -PackageOnly` when you want the zip and notes without creating the draft release yet
+  - `release-notes.md` generated from git history (or from `bin\githubrelease\whats-new.md` if present — written by `/ship`)
 
 ## Modding Reference
 
@@ -78,7 +78,7 @@ For detailed game API docs, modding patterns, reflection examples, and UI patter
 
 - User is not a programmer — explain what code does in plain language when making changes
 - Keep the mod focused and simple — one clear purpose
-- **Version bumping:** See the Versioning section below for full details. If a session involves code changes, **proactively ask the user whether a version bump should be included before the session ends**. If the user confirms a bump, also run `.\create-github-release.ps1` to create a GitHub draft release automatically so the user can go straight to GitHub and approve it.
+- **Version bumping:** See the Versioning section below for full details. If a session involves code changes, **proactively ask the user whether a version bump should be included before the session ends**. If the user confirms a bump, use `/ship` to run the full release workflow.
 - The `COI_ROOT` env var must be set for builds to work
 - Ask clarifying questions before writing code; document answers in this file
 - **GitHub Issues:** Before starting any bug fix or feature work, check `gh issue list` for a related open issue. If one exists, remind the user so commit messages can include `Fixes #N` (or `Closes #N` / `Resolves #N`) — GitHub auto-closes the issue when the commit lands on `main`
@@ -99,8 +99,8 @@ This project uses **Semantic Versioning** (`MAJOR.MINOR.PATCH`):
 
 **End-of-session workflow:**
 1. If code changes were made during the session, ask the user if a version bump is needed
-2. If yes, bump `manifest.json`, prompt the user to commit the change (remind them to tag github issues), and run `.\create-github-release.ps1` to create a GitHub draft release
-3. The user can then go directly to GitHub and approve the draft
+2. If yes, run `/ship` — it handles version bump, What's New drafting, commit message suggestion, packaging, and GitHub draft release creation end-to-end
+3. The user can then go directly to GitHub and publish the draft
 
 ## Documentation Rules (IMPORTANT)
 

@@ -75,11 +75,18 @@ $version = [string]$manifest.version
 $tag = "v$version"
 $title = "$displayName $tag"
 
-$releaseRoot = Join-Path $repoRoot "githubrelease"
+$releaseRoot = Join-Path $repoRoot "bin\githubrelease"
 $stagingRoot = Join-Path $releaseRoot $modId
 $dllPath = Join-Path $repoRoot "bin\Release\net48\$modId.dll"
 $zipPath = Join-Path $releaseRoot ("{0}-{1}.zip" -f $modId, $tag)
 $notesPath = Join-Path $releaseRoot "release-notes.md"
+
+# Read pre-drafted What's New content before the release folder is wiped
+$whatsNewContent = $null
+$whatsNewOverridePath = Join-Path $releaseRoot "whats-new.md"
+if (Test-Path $whatsNewOverridePath) {
+    $whatsNewContent = (Get-Content $whatsNewOverridePath -Raw).Trim()
+}
 
 $localTagExists = @(& git tag --list $tag)
 if ($LASTEXITCODE -eq 0 -and $localTagExists.Count -gt 0) {
@@ -155,6 +162,12 @@ if ($commitBullets.Count -eq 0) {
     $commitBullets += "- No changes found."
 }
 
+# --- What's New: override with pre-drafted content if present (written by /ship skill) ---
+
+if ($whatsNewContent) {
+    $commitBullets = @($whatsNewContent)
+}
+
 # --- Known Issues: auto-pull open issues with 'bug' label ---
 
 $knownIssueBullets = @()
@@ -185,34 +198,38 @@ if ($knownIssueBullets.Count -gt 0) {
     $notes += $knownIssueBullets
 }
 
+$backtick3 = '```'
+
 $notes += @(
     "",
     "## $emojiPackage Installation",
     "1. $emojiDownArrow Download the **``$modId-$tag.zip``** file below",
     "2. Extract the zip file",
     "3. Copy the **``ResearchQueue``** folder into your mods directory:",
-    "   ``````",
+    "   $backtick3",
     "   %APPDATA%\Captain of Industry\Mods\",
-    "   ``````",
-    "4. Your folder structure should look like this:",
-    "   ``````",
+    "   $backtick3",
+    "   Your folder structure should look like this:",
+    "   $backtick3",
     "   Captain of Industry\Mods\ResearchQueue\",
     "       ResearchQueue.dll",
     "       manifest.json",
-    "   ``````",
-    "5. Launch the game and in the main menu enable the mod when loading your save",
-    "6. Open the research tree (hotkey ``G`` by default) - the queue panel appears on the right side when no research nodes are selected",
+    "   $backtick3",
+    "4. Launch the game and enable the mod when loading your save. In-game open the research tree (hotkey ``G`` by default) - the queue panel appears on the right side when no research nodes are selected",
     "",
     "<details>",
     "<summary><strong>$emojiFolder Can't find your Mods folder?</strong></summary>",
     "",
     "Press ``Win + R``, paste this path, and hit Enter:",
-    "``````",
+    $backtick3,
     "%APPDATA%\Captain of Industry\Mods",
-    "``````",
+    $backtick3,
     "If the ``Mods`` folder doesn't exist yet, create it.",
     "",
-    "</details>"
+    "</details>",
+    "",
+    "---",
+    "Got a bug or suggestion? [Join the discussions on GitHub]($repoUrl/discussions)"
 )
 
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)

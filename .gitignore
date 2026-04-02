@@ -3,6 +3,7 @@ obj/
 *.user
 *.suo
 .vs/
-githubrelease/
 screenshots/temp/
-.claude/
+# Ignore .claude/ contents except the skills folder (which is version-controlled)
+.claude/*
+!.claude/skills
