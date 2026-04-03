@@ -4,7 +4,7 @@
 
 This is a C# mod for the game **Captain of Industry** (COI), developed using the official Mafi modding framework. The mod's goal is to give players a new UI element where they can reorder their research queue.
 
-The user developing the mod and prompting is a non-programmer (technical product manager and gaming enthusiast). Code should be explained clearly and kept as simple as possible. Avoid over-engineering.
+The maintainer developing the mod and prompting is a not a programmer by trade. Code should be explained clearly and kept as simple as possible.
 
 ## Mod Identity
 
@@ -13,7 +13,7 @@ The user developing the mod and prompting is a non-programmer (technical product
 - **GitHub repo:** `Jagg111/COI-ResearchQueue`
 - **Game:** Captain of Industry (Update 4+)
 - **Framework:** Mafi (.NET 4.8)
-- **Mod type:** `IMod` (upgraded from DataOnlyMod to access Initialize() and DI)
+- **Mod type:** `IMod`
 
 ## Project Structure
 
@@ -31,7 +31,6 @@ obj/                         # Build intermediates (gitignored)
 
 ### Environment Variables Required
 - `COI_ROOT` — path to the Captain of Industry game install directory (e.g., Steam folder)
-- `COI_MODS` — auto-set to `%APPDATA%\Captain of Industry\Mods` in the .csproj
 
 ### Build
 Open `ResearchQueue.sln` in Visual Studio and build, or run from `C:\Code\CaptainOfIndustry`:
@@ -49,16 +48,17 @@ On build, the mod is automatically deployed to `%APPDATA%\Captain of Industry\Mo
 
 ## GitHub Release Packaging
 
-- `manifest.json` version is the source of truth for release packaging, tags, and release titles
-- **The canonical release workflow is `/ship-it`** — a Claude Code skill that handles everything end-to-end (see `.claude/skills/ship-it/SKILL.md`)
-- The script `.\create-github-release.ps1` is the underlying packaging tool called by `/ship-it`. It can also be run standalone:
-  - `.\create-github-release.ps1` — builds, packages, and creates a GitHub draft release
-  - `.\create-github-release.ps1 -PackageOnly` — builds and packages only (no GitHub release), useful for inspecting output
-- The script creates a local, gitignored `bin\githubrelease\` folder containing:
-  - `ResearchQueue\ResearchQueue.dll`
-  - `ResearchQueue\manifest.json`
-  - a versioned zip ready for GitHub Releases
-  - `release-notes.md` generated from git history (or from `bin\githubrelease\whats-new.md` if present — written by `/ship-it`)
+The skill `/ship-it` will create a new GitHub release. The skill handles everything end-to-end including mod version bumps and release notes -- see `.claude/skills/ship-it/SKILL.md` for details.
+
+- `manifest.json` -- version is the source of truth for release tags and titles
+- `create-github-release.ps1` -- the underlying packaging script called by `/ship-it`; can also be run standalone
+
+## Health Checks & Game Version Compatibility
+
+The skill `/game-version-check` can be run after any Captain of Industry game update to check whether the mod will still work. The skill handles the full workflow end-to-end -- see `.claude/skills/game-version-check/SKILL.md` for details.
+
+- `check-reflection-targets.ps1` — the underlying diagnostic script; checks all internal game references the mod depends on against the actual game DLLs. Can also be run standalone.
+- `inspect_dll.ps1` — deeper inspection tool used when something breaks to see what changed in the game
 
 ## Modding Reference
 
@@ -66,23 +66,16 @@ For detailed game API docs, modding patterns, reflection examples, and UI patter
 
 ## Mod Goal & Player Experience
 
-**Problem being solved:** Player has queued up many research items, then gets a new goal/quest that makes something deep in the queue suddenly urgent. They need a way to move that item to the top without removing and re-adding everything.
+The mod adds a drag-and-drop research queue panel inside the existing research tree screen, letting players reorder queued research items and start/remove them.
 
-**Target feature:** Drag-and-drop reordering of the research queue, surfaced inside the existing research tree screen (the screen shown when you click the beaker icon).
-
-**Save compatibility (critical):**
-- Mod must work on existing saves (no new game required to use it)
-- If mod is removed, queue remains in whatever order it was last left in — player just loses the ability to reorder
-- Do NOT store queue order in a separate mod-owned file; queue state must live entirely in the game's own save data
-- Implementation: manipulate the game's internal queue directly via reflection, not a parallel data structure
+Queue state lives in the game's own save data, manipulated directly via reflection — no separate mod-owned files. The mod works on existing saves and can be removed safely; the queue stays in whatever order it was last left in.
 
 ## Working Style Notes
 
 - User is not a programmer — explain what code does in plain language when making changes
-- Keep the mod focused and simple — one clear purpose
 - **Version bumping:** See the Versioning section below for full details. If a session involves code changes, **proactively ask the user whether a version bump should be included before the session ends**. If the user confirms a bump, use `/ship-it` to run the full release workflow.
 - The `COI_ROOT` env var must be set for builds to work
-- Ask clarifying questions before writing code; document answers in this file
+- Before writing any code, ask clarifying questions to gather enough context to attempt the task in one pass. Don't start writing until the intent is clear and there is little room for ambiguity or interpretation.
 - **GitHub Issues:** Before starting any bug fix or feature work, check `gh issue list` for a related open issue. If one exists, remind the user so commit messages can include `Fixes #N` (or `Closes #N` / `Resolves #N`) — GitHub auto-closes the issue when the commit lands on `main`
 - **Commit messages:** Single line describing what changed. No body text. For sessions related to github issues append `Fixes #N` for bug issues or `Closes #N` for enhancement issues.
 - **Reflection safety:** All reflection access (`GetField`, `GetProperty`, `GetMethod`) must go through the `ReflectionProbe` helper in `ResearchQueueWindowController.cs`. This keeps the runtime health check and `check-reflection-targets.ps1` automatically in sync. After a game update, run `/game-version-check` to diagnose breakage.
