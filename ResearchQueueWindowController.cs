@@ -214,7 +214,12 @@ public class ResearchQueueWindowController {
 	}
 
 	private void ScheduleDeferredExtraction(int attempt) {
-		if (_panelInjected || attempt > MAX_DEFERRED_EXTRACTION_ATTEMPTS || _schedulerSource == null) return;
+		if (_panelInjected) return;
+		if (attempt > MAX_DEFERRED_EXTRACTION_ATTEMPTS) {
+			Log.Error("ResearchQueue: Failed to find ResearchWindow after max attempts — queue panel will not appear");
+			return;
+		}
+		if (_schedulerSource == null) return;
 
 		try {
 			_schedulerSource.RootElement.schedule.Execute(() => {
