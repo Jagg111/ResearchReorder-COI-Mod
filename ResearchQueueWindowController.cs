@@ -82,7 +82,9 @@ public class ResearchQueueWindowController {
 	private Column _currentResearchContent;   // Visible when research is active
 	private Label _noResearchLabel;           // Visible when no research
 	private PropertyInfo _currentResearchProp;   // Cached: CurrentResearch property on ResearchManager
+	private MethodInfo _currentResearchSetter;   // Cached: private setter for CurrentResearch
 	private MethodInfo _refreshQueueMethod;      // Cached: refreshQueueValues() on ResearchManager
+	private object _selectedNodeNoneValue;       // Cached: Option<ResearchNodeUi>.None for deselecting nodes
 
 	public ResearchQueueWindowController(
 		ToolbarHud toolbar,
@@ -116,6 +118,7 @@ public class ResearchQueueWindowController {
 
 		// Cache reflection for current research manipulation
 		_currentResearchProp = typeof(ResearchManager).GetProperty("CurrentResearch");
+		_currentResearchSetter = _currentResearchProp?.GetSetMethod(true);
 		_refreshQueueMethod = typeof(ResearchManager).GetMethod("refreshQueueValues",
 			BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -266,6 +269,8 @@ public class ResearchQueueWindowController {
 				object optionVal = _selectedNodeField.GetValue(_researchWindow);
 				if (optionVal != null) {
 					_hasValueProp = optionVal.GetType().GetProperty("HasValue");
+					_selectedNodeNoneValue = _selectedNodeField.FieldType.GetField("None",
+						BindingFlags.Static | BindingFlags.Public)?.GetValue(null);
 				}
 			}
 
@@ -548,11 +553,8 @@ public class ResearchQueueWindowController {
 			if (detailViewOpen && _selectedNodeField != null) {
 				// Writing Option<T>.None to m_selectedNode deselects the node in the tree,
 				// which causes UpdatePanelVisibility() to show our queue panel on the next frame.
-				// NOTE: Option<T>.None is a static FIELD, not a property — GetField not GetProperty.
-				var noneVal = _selectedNodeField.FieldType.GetField("None",
-					BindingFlags.Static | BindingFlags.Public)?.GetValue(null);
-				if (noneVal != null) {
-					_selectedNodeField.SetValue(_researchWindow, noneVal);
+				if (_selectedNodeNoneValue != null) {
+					_selectedNodeField.SetValue(_researchWindow, _selectedNodeNoneValue);
 				}
 			}
 		}
@@ -574,9 +576,8 @@ public class ResearchQueueWindowController {
 		((IResearchNodeFriend)current).CancelResearch();
 
 		// Clear CurrentResearch via reflection (private setter)
-		var setter = _currentResearchProp?.GetSetMethod(true);
-		if (setter != null) {
-			setter.Invoke(_researchMgr, new object[] { Option<ResearchNode>.None });
+		if (_currentResearchSetter != null) {
+			_currentResearchSetter.Invoke(_researchMgr, new object[] { Option<ResearchNode>.None });
 		}
 
 		// Auto-start next queued item if available
@@ -617,9 +618,8 @@ public class ResearchQueueWindowController {
 			var oldCurrent = currentOpt.ValueOrNull;
 			if (oldCurrent != null) {
 				((IResearchNodeFriend)oldCurrent).CancelResearch();
-				var setter = _currentResearchProp?.GetSetMethod(true);
-				if (setter != null) {
-					setter.Invoke(_researchMgr, new object[] { Option<ResearchNode>.None });
+				if (_currentResearchSetter != null) {
+					_currentResearchSetter.Invoke(_researchMgr, new object[] { Option<ResearchNode>.None });
 				}
 				queue.EnqueueAt(oldCurrent, 0);
 			}
