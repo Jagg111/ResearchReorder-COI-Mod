@@ -74,6 +74,8 @@ public class ResearchQueueWindowController {
 	private PropertyInfo _hasValueProp;        // HasValue property on Option<ResearchNodeUi>
 	private bool _pollingActive;
 	private int _lastKnownQueueCount = -1;
+	private int _pollFrameCounter;
+	private const int QUEUE_CHECK_INTERVAL = 10; // Check for external queue changes every N frames
 	private Option<ResearchNode> _lastKnownCurrentResearch;
 
 	// Current research section
@@ -474,7 +476,11 @@ public class ResearchQueueWindowController {
 		try {
 			UpdatePanelVisibility();
 			UpdateProgressBar();
-			CheckForQueueChanges();
+			_pollFrameCounter++;
+			if (_pollFrameCounter >= QUEUE_CHECK_INTERVAL) {
+				_pollFrameCounter = 0;
+				CheckForQueueChanges();
+			}
 		} catch (Exception ex) {
 			Log.Warning($"ResearchQueue: Visibility poll error: {ex.Message}");
 			_pollingActive = false;
