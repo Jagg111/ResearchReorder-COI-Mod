@@ -5,6 +5,26 @@ description: End-to-end release workflow for the ResearchQueue mod. Handles pre-
 
 You are running the `/ship-it` release workflow for the ResearchQueue Captain of Industry mod. Walk through each step in order. Stop and report clearly if anything fails.
 
+**Test mode:** If the user invoked `/ship-it --test`, follow all steps but:
+- Do NOT write `bin/githubrelease/whats-new.md`
+- Do NOT edit `manifest.json`
+- Do NOT run `create-github-release.ps1`
+- Instead, show what *would* happen at each of those steps and label the output clearly with `[TEST RUN — not applied]`
+
+At the end of a test run, say "Test run complete - nothing was written or committed."
+
+---
+
+## Step 0 — Stale notes guard
+
+Check whether `bin/githubrelease/whats-new.md` already exists.
+
+- If it does **not** exist: continue to Step 1.
+- If it **does** exist: show the user its contents and ask: "A `whats-new.md` from a previous run exists. What would you like to do — use it as a starting point, discard it, or cancel?"
+  - **Use it** — load its contents as the draft bullets in Step 3; skip the research phase and go straight to "Any tweaks?"
+  - **Discard it** — delete the file and continue normally from Step 1
+  - **Cancel** — stop here, do nothing
+
 ---
 
 ## Step 1 — Pre-flight checks
@@ -22,9 +42,10 @@ If everything passes, say "Pre-flight checks passed." and continue.
 ## Step 2 — Version bump decision
 
 1. Read `manifest.json` and show the user the current version
-2. Run `git tag --sort=-creatordate` to find the most recent tag (call it `$prevTag`). If no tags exist, note that this will be the first release.
-3. Run `git log $prevTag..HEAD --pretty=format:"%s%n%b"` (or `git log HEAD --pretty=format:"%s%n%b"` if no tags) to capture both subject and body of each commit
-4. Show the user the raw commit list, including any issue references found in commit bodies
+2. Run `git fetch --tags` to ensure all remote tags are present locally
+3. Run `git tag --sort=-creatordate` to find the most recent tag (call it `$prevTag`). If no tags exist, note that this will be the first release.
+4. Run `git log $prevTag..HEAD --pretty=format:"%s%n%b"` (or `git log HEAD --pretty=format:"%s%n%b"` if no tags) to capture both subject and body of each commit
+5. Show the user the raw commit list, including any issue references found in commit bodies
 
 Then ask the user which version bump to apply. Show the current version and these options:
 - **Patch (0.0.X)** — bug fixes and small tweaks. When in doubt, use this.
@@ -44,11 +65,10 @@ Before writing bullets, do deep research on every player-visible commit:
 3. **Group commits by issue.** All commits referencing the same `#N` belong to one bullet. Commits with no issue reference get their own bullet if player-visible — always read the code diff for these too, do not rely solely on the commit message.
 
 Then write the bullets using these rules:
-- Write for players, not developers. "Fixed: queue resets on save load" not "refactor queue persistence layer"
-- Use the issue details AND the code diff to write a specific, accurate description. Do not rely on vague commit messages alone.
+- Don't use technical words or jargon that only developers or tech-savvy people would know, write for the players of the game. "Queues now carry over between game sessions" not "refactor queue persistence layer"
+- Use the issue details AND the code diff to write a concise but meaningful and understandable description. Do not rely on vague commit messages alone.
 - Omit commits that have no player-visible effect (build changes, README edits, code cleanup, docs, comment fixes)
-- One bullet per GitHub issue maximum. Merge all commits for that issue into a single bullet.
-- Each bullet leads with a past-tense verb or label: "Fixed:", "Added:", "Improved:" — or just a plain verb
+- One bullet per GitHub issue maximum. Merge all commits for that issue into a single bullet, even it means having a more verbose description.
 - Append the issue link at the end of the bullet: `([#N](https://github.com/Jagg111/COI-ResearchQueue/issues/N))`
 - No em dashes anywhere
 - No headers, no sections — just the bullet list
@@ -96,3 +116,7 @@ Stream the output. If the script fails, show the full error and stop.
 Confirm the GitHub draft release was created successfully.
 
 Remind the user: "Go to [GitHub Releases](https://github.com/Jagg111/COI-ResearchQueue/releases) to review and publish the draft when you're ready."
+
+Then ask: "Did this release include any visible UI changes?" If yes, remind the user:
+
+> Don't forget to update `screenshots/current.gif` in the repo to reflect the new UI, then commit it. The README links directly to that file.
