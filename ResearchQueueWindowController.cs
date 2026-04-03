@@ -699,20 +699,26 @@ public class ResearchQueueWindowController {
 	}
 
 	/// <summary>
-	/// Returns the latest (highest) queue index a node can occupy without
-	/// sitting below any of its dependents that still need it as a prerequisite.
+	/// Returns the latest (highest) post-pop insert index a node can occupy
+	/// without ending up after any of its dependents. All indices are in
+	/// tempQueue (post-pop) coordinate space, where inserting at position i
+	/// shifts the item currently at i to i+1. This means a dependent at
+	/// tempQueue index i is still safe when we insert at i (dependent becomes
+	/// i+1), so the constraint is latest = i, NOT i-1.
 	/// ResearchNode has no Children property, so we derive dependents by
 	/// scanning all queue items' Parents for references to this node.
-	/// Example: if A is needed by B (at index 1), the latest valid index
-	/// for A is 0 (one above B).
+	/// Starting value is Count (not Count-1) so that appending to the end
+	/// of the queue is always a valid insert position when no dependents exist.
+	/// Example: if A is needed by B (at tempQueue index 2), the latest valid
+	/// insert index for A is 2 (inserting at 2 pushes B to index 3).
 	/// </summary>
 	private static int GetLatestValidIndex(ResearchNode node, List<ResearchNode> queueNodes) {
-		int latest = queueNodes.Count - 1;
+		int latest = queueNodes.Count; // Count (not Count-1) so appending to end is a valid position
 		if (node.TimesResearched > 0) return latest; // already researched, nothing depends on us
 		for (int i = 0; i < queueNodes.Count; i++) {
 			foreach (var parent in queueNodes[i].Parents) {
 				if (ReferenceEquals(parent, node) && parent.TimesResearched <= 0) {
-					latest = Math.Min(latest, i - 1); // must be above this dependent
+					latest = Math.Min(latest, i); // inserting at i shifts dependent to i+1, so i is still valid
 					break;
 				}
 			}
