@@ -493,12 +493,18 @@ public class ResearchQueueWindowController {
 	}
 
 	/// <summary>
-	/// Detects external queue changes (e.g. player adding research via the native UI)
-	/// by comparing the current queue count and active research against cached values.
-	/// Triggers a full panel refresh when a change is detected.
+	/// Detects external queue changes (e.g. player adding/removing research via the native
+	/// ResearchDetailUi) by comparing queue count and active research against cached values.
+	/// Triggers a full panel refresh when a change is detected. If the detail view was open
+	/// when the change happened, also clears m_selectedNode so the tree deselects and the
+	/// queue panel auto-shows — avoiding the need to manually press Escape first.
 	/// </summary>
 	private void CheckForQueueChanges() {
-		if (_queueField == null || !_injectedPanel.IsVisible()) return;
+		if (_queueField == null) return;
+		// Run whenever either our panel OR the detail view is visible — we need to detect
+		// queue changes that happen while the detail view is open (our panel is hidden).
+		bool detailViewOpen = _researchDetailUi != null && _researchDetailUi.IsVisible();
+		if (!_injectedPanel.IsVisible() && !detailViewOpen) return;
 
 		var queue = (Queueue<ResearchNode>)_queueField.GetValue(_researchMgr);
 		var currentResearch = _researchMgr.CurrentResearch;
@@ -512,6 +518,17 @@ public class ResearchQueueWindowController {
 			_lastKnownQueueCount = queue.Count;
 			_lastKnownCurrentResearch = currentResearch;
 			RefreshEmbeddedPanel();
+
+			if (detailViewOpen && _selectedNodeField != null) {
+				// Writing Option<T>.None to m_selectedNode deselects the node in the tree,
+				// which causes UpdatePanelVisibility() to show our queue panel on the next frame.
+				// NOTE: Option<T>.None is a static FIELD, not a property — GetField not GetProperty.
+				var noneVal = _selectedNodeField.FieldType.GetField("None",
+					BindingFlags.Static | BindingFlags.Public)?.GetValue(null);
+				if (noneVal != null) {
+					_selectedNodeField.SetValue(_researchWindow, noneVal);
+				}
+			}
 		}
 	}
 

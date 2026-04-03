@@ -414,7 +414,13 @@ object selectedOption = selectedField.GetValue(researchWindow);
 - `ResearchWindow` is NOT in `AllResolvedInstances` — only its `Controller` is
 - The window is **lazily created** — `Option` is empty at construction, populated after first research tree open. Must retry later (e.g., in `Activate()`)
 - `Option<T>` API: use `HasValue` (bool) and `ValueOrNull` (returns T or null). There is NO `Value` property.
+- `Option<T>.None` is a **static field**, not a property — use `GetField("None", BindingFlags.Static | BindingFlags.Public)`, NOT `GetProperty`. `GetProperty` silently returns null.
 - `m_selectedNode` is `Option<ResearchNodeUi>`, NOT a nullable reference — must unwrap with `HasValue`/`ValueOrNull`
+- **Writing `Option<T>.None` to `m_selectedNode` programmatically deselects the node** — clears the tree highlight and hides the detail panel. Verified working. Pattern:
+  ```csharp
+  var noneVal = _selectedNodeField.FieldType.GetField("None", BindingFlags.Static | BindingFlags.Public)?.GetValue(null);
+  if (noneVal != null) _selectedNodeField.SetValue(_researchWindow, noneVal);
+  ```
 - `ResearchDetailUi` is NOT a field on `ResearchWindow` — it's a child component at `Body → Row[0] → child[1]`
 - The `ResearchWindow+Controller` has only 2 fields: `m_researchManager` (ResearchManager) and `Context` (ControllerContext)
 - The controller's base type is `WindowController<ResearchWindow>` which has the `m_window` field
