@@ -98,24 +98,24 @@ Explain to the user in plain language what broke and what it means for the mod. 
 
 Time to test the mod in the actual game. Present this checklist to the user and wait for their feedback:
 
-> Please launch the game, load a save, and work through this checklist. For each item, note whether it passed or if anything seemed off.
+> Launch the game, load a save, and work through this checklist. 
 >
 > 1. **Startup** -- Open the research tree. The queue panel should appear on the right side.
 > 2. **Panel visibility toggle** -- Click on a research node (panel should hide). Click away to deselect (panel should reappear).
 > 3. **Current research display** -- Start researching something. The queue panel should show its name and a progress bar.
 > 4. **Lab status indicator** -- If you have an active research lab, the progress bar should be green. If you pause or don't have a lab, it should turn orange.
 > 5. **Queue population** -- Add 3 or more items to the research queue using the normal research tree buttons. They should all appear in the queue panel.
-> 6. **Promote button** -- On a queued item, click the arrow/promote button. That item should jump to active research.
-> 7. **Remove button** -- On a queued item, click the X/remove button. It should disappear from the queue.
-> 8. **Cancel button (mod)** -- Click the red X next to the current research in the queue panel. Research should cancel but the rest of the queue should stay intact.
-> 9. **Cancel button (native)** -- Select a research node and use the game's built-in cancel button in the detail panel. The queue should still be preserved (not wiped).
+> 6. **Promote button** -- On a queued item, click the promote button. That item should jump to active research.
+> 7. **Remove button in queue (mod)** -- On a queued item, click the X/remove button. It should disappear from the queue.
+> 8. **Remove button on current (mod)** -- Click the red X next to the current research in the queue panel. Research should cancel but the rest of the queue should stay intact.
+> 9. **Cancel button on current (native)** -- Select the active research node in the tree and use the game's built-in cancel button in the detail panel. The queue should still be preserved (not wiped).
 > 10. **Drag-and-drop reorder** -- Drag a queue item by its handle to a new position. The order should update.
 > 11. **Prerequisite constraint** -- Try dragging an item above one of its unresearched prerequisites. It should snap back to its original position and play an error sound.
 > 12. **Out-of-order warning** -- If any item ends up above its prerequisite, it should have an orange/red tint and show a "Move below: [name]" message.
 > 13. **Empty queue** -- Remove all items from the queue. The panel should show an "Empty" label.
 > 14. **Scrollbar** -- Add enough items so the list overflows. A scrollbar should appear. Remove items until it fits -- scrollbar should hide.
 >
-> Let me know how it went! You can say something like "all passed" or list any items that had issues.
+> Let me know how it goes! You can say something like "all clear" or list any items that had issues.
 
 Wait for the user to respond before continuing.
 
@@ -173,7 +173,7 @@ Continue to Step 5.
 
 ## Step 5 -- Version bump (conditional)
 
-**Only run this step if the game version from Step 0 is different from the `max_verified_game_version` in manifest.json.** If they already match, skip this step entirely and say the check is complete.
+**Only run this step if the game version from Step 0 is different from the `max_verified_game_version` in manifest.json.** If they already match, skip this step entirely and say something fun and lighthearted.
 
 If the versions differ and all checks passed:
 

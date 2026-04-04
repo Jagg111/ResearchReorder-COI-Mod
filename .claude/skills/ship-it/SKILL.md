@@ -146,6 +146,8 @@ Then ask: "Did this release include any visible UI changes?" If yes, remind the 
 
 > Don't forget to update `screenshots/current.gif` in the repo to reflect the new UI, then commit it. The README links directly to that file.
 
+Conclude by saying something fun and lighthearted.
+
 ---
 
 ## Notes
