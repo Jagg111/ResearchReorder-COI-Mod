@@ -134,6 +134,7 @@ public class ResearchQueueWindowController {
 	private ScrollColumn _embeddedScroll;     // Scrollable area for queue rows inside the panel
 	private readonly List<UiComponent> _embeddedRows = new List<UiComponent>();
 	private UiComponent _researchDetailUi;    // The game's detail panel (toggled opposite to ours)
+	private UiComponent _nativeCancelButton;  // The native detail panel's cancel button (hooked to preserve queue)
 	private FieldInfo _selectedNodeField;      // m_selectedNode field on ResearchWindow
 	private PropertyInfo _hasValueProp;        // HasValue property on Option<ResearchNodeUi>
 	private bool _pollingActive;
@@ -150,6 +151,7 @@ public class ResearchQueueWindowController {
 	private PropertyInfo _currentResearchProp;   // Cached: CurrentResearch property on ResearchManager
 	private MethodInfo _currentResearchSetter;   // Cached: private setter for CurrentResearch
 	private MethodInfo _refreshQueueMethod;      // Cached: refreshQueueValues() on ResearchManager
+	private FieldInfo _buttonOnClickField;       // Cached: Button.m_onClick field for native cancel button hooking
 	private object _selectedNodeNoneValue;       // Cached: Option<ResearchNodeUi>.None for deselecting nodes
 
 	public ResearchQueueWindowController(
@@ -190,6 +192,11 @@ public class ResearchQueueWindowController {
 			typeof(ResearchManager), "refreshQueueValues",
 			BindingFlags.NonPublic | BindingFlags.Instance,
 			"[CRITICAL] Queue badge sync after mutations");
+
+		_buttonOnClickField = ReflectionProbe.Field(
+			typeof(Button), "m_onClick",
+			BindingFlags.NonPublic | BindingFlags.Instance,
+			"[OPTIONAL] Native cancel button click handler replacement");
 
 		// Find ResearchWindow via the game's ResearchWindow+Controller.
 		// The controller extends WindowController<ResearchWindow> and stores the
@@ -487,6 +494,7 @@ public class ResearchQueueWindowController {
 			contentRow.RootElement.schedule.Execute(() => {
 				contentRow.Add(_injectedPanel);
 				_injectedPanel.SetVisible(true);
+				TryHookNativeCancelButton();
 				RefreshEmbeddedPanel();
 				StartVisibilityPolling();
 				Log.Info("ResearchQueue: Queue panel injected into research tree!");
@@ -495,6 +503,48 @@ public class ResearchQueueWindowController {
 		catch (Exception ex) {
 			Log.Warning($"ResearchQueue: Failed to inject panel: {ex.Message}");
 		}
+	}
+
+	/// <summary>
+	/// Finds the native cancel button inside ResearchDetailUi and replaces its click
+	/// handler with our own queue-safe version. The native cancel calls StopResearch()
+	/// which clears the entire queue — our version calls CancelCurrentResearch() instead,
+	/// which cancels only the current item and preserves the queue.
+	/// </summary>
+	private void TryHookNativeCancelButton() {
+		if (_researchDetailUi == null || !_canMutateQueue || _buttonOnClickField == null) return;
+
+		try {
+			// Walk all descendants of ResearchDetailUi looking for a ButtonIcon
+			// whose VisualElement has the "danger" CSS class. The native cancel
+			// button uses Button.Danger style, which applies the "danger" class.
+			_nativeCancelButton = FindButtonWithClass(_researchDetailUi, "danger");
+
+			if (_nativeCancelButton != null) {
+				_buttonOnClickField.SetValue(_nativeCancelButton,
+					Option<Action>.Some((Action)CancelCurrentResearch));
+				Log.Info("ResearchQueue: Hooked native cancel button — queue will be preserved on native cancel");
+			} else {
+				Log.Warning("ResearchQueue: Could not find native cancel button — cancelling via the detail panel will still wipe the queue");
+			}
+		} catch (Exception ex) {
+			Log.Warning($"ResearchQueue: Failed to hook native cancel button: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Recursively searches a component tree for the first ButtonIcon whose
+	/// root VisualElement contains the given CSS class.
+	/// </summary>
+	private static UiComponent FindButtonWithClass(UiComponent root, string cssClass) {
+		foreach (var child in root.AllChildren) {
+			if (child is Button btn && btn.ButtonElement.ClassListContains(cssClass)) {
+				return btn;
+			}
+			var found = FindButtonWithClass(child, cssClass);
+			if (found != null) return found;
+		}
+		return null;
 	}
 
 	/// <summary>

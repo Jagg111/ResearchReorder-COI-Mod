@@ -1653,6 +1653,29 @@ var customBtn = new ButtonText(Button.Primary, new LocStrFormatted("custom text"
 customBtn.OnClick((Action)(() => { /* handler */ }), allowKeyPresses: false);
 ```
 
+### Replacing a Button's Click Handler via Reflection
+
+To intercept or replace a button's click handler without Harmony:
+
+```csharp
+// Button.m_onClick is a private Option<Action> field on Button (base class of ButtonIcon)
+var onClickField = typeof(Button).GetField(
+    "m_onClick", BindingFlags.NonPublic | BindingFlags.Instance);
+
+// Replace with a new handler
+onClickField.SetValue(targetButton, Option<Action>.Some((Action)MyMethod));
+```
+
+**CSS class trick for identifying buttons by variant:** Each `ButtonVariant` applies named CSS classes. `Button.Danger` applies `"danger"`, `Button.Primary` applies `"primary_button"`, etc. You can identify a button's style at runtime by checking its `ButtonElement` VisualElement:
+
+```csharp
+if (someButton.ButtonElement.ClassListContains("danger")) {
+    // this is a Danger-styled button
+}
+```
+
+This is useful when traversing an unknown component tree (e.g., inside `ResearchDetailUi`) to locate a specific button without needing a field reference to it.
+
 **Layout helpers verified in-game:**
 - `.AlignSelfCenter()` — centers a button within a `Column` (prevents stretch-to-fill)
 
