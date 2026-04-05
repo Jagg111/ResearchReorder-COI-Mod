@@ -2,7 +2,7 @@
 
 # 🔬 Research Queue (Captain of Industry Mod)
 
-### Stop rebuilding your entire queue just to make a change. Manage your queue directly in the research tree.
+### Stop rebuilding your entire queue when you change your mind. Manage your queue directly in the research tree.
 ![Research Queue panel with drag-and-drop controls inside the research tree](screenshots/current.gif)
 
 [![Last Updated](https://img.shields.io/github/release-date/Jagg111/COI-ResearchQueue?label=Mod%20Last%20Updated&style=flat)](https://github.com/Jagg111/COI-ResearchQueue/releases/latest)
@@ -24,6 +24,10 @@ Without this mod, if you have a queue and want to start new research, your only 
 - 📊 **Live research visibility** - see what's actively being researched and its progress
 - 💾 **Works on existing saves** - install and go, no new game required
 
+## 🔔 Updates & Changelog
+
+- Until an official mod portal or third-party distribution is available, the easiest way to get mod updates is to watch this repo. Click **"Watch" → "Custom → Releases"** to get notified when new versions are published.
+- All updates are posted on the [Releases page](https://github.com/Jagg111/COI-ResearchQueue/releases), including what's changed and newest download links.
 
 ## 📦 Installation
 
@@ -53,6 +57,10 @@ Press `Win + R`, paste this path, and hit Enter:
 
 </details>
 
+## ⭐ Support
+
+If you find this mod useful, consider starring the repo ⭐ - it helps others discover it!
+
 ## 🔧 Compatibility
 
 | | |
@@ -76,15 +84,7 @@ Press `Win + R`, paste this path, and hit Enter:
 **Is this mod safe? Does it modify save files?**  
 ✅ The mod uses the game's existing research queue data. It does not create its own save data or modify save files directly - it only changes the order of items already in the queue.
 
-## 🔔 Updates & Changelog
-
-- All updates are posted on the [Releases page](https://github.com/Jagg111/COI-ResearchQueue/releases), including what's changed and download links.
-- Until an official mod portal or third-party distribution is available, the easiest way to get mod updates is to watch this repo. Click **"Watch" → "Custom → Releases"** to get notified when new versions are published.
-
 ## 🐛 Feedback & Bug Reports
 
-Got a suggestion or found a bug? Join the [discussions on GitHub](https://github.com/Jagg111/COI-ResearchQueue/discussions)!
+Got a suggestion or found a bug? Hop over to [discussions](https://github.com/Jagg111/COI-ResearchQueue/discussions) and let me know!
 
-## ⭐ Support
-
-If you find this mod useful, consider starring the repo ⭐ - it helps others discover it!
