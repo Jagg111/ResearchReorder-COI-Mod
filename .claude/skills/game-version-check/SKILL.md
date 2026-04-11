@@ -14,6 +14,7 @@ The ResearchQueue mod depends on internal game code that isn't part of any offic
 
 | File | What it does |
 |------|-------------|
+| `changelog.txt` | The game's own changelog, located in the game install directory (`$COI_ROOT`). The first line is always the current version (e.g. `v0.8.2c | 2026-03-23`), including hotfix letter suffixes. This is the version source used in Step 0. |
 | `check-reflection-targets.ps1` | The diagnostic script. Reads the mod's source code to find every internal game reference, then checks each one against the actual game files. No separate list to maintain -- it always matches what's in the code. |
 | `inspect_dll.ps1` | A deeper inspection tool. When something breaks, this shows you what a game type looks like now so you can spot what changed (renamed, moved, etc.). |
 | `ResearchQueueWindowController.cs` | The mod's main code file. Contains all the `ReflectionProbe.*` calls that define what internal game code the mod depends on. |
@@ -22,22 +23,22 @@ The ResearchQueue mod depends on internal game code that isn't part of any offic
 
 ## Step 0 -- Determine game version and compare
 
-Read the game version from the installed DLLs and check it against what the mod was last verified with.
+Read the game version from the game's changelog and check it against what the mod was last verified with.
 
-1. Read the version from `Mafi.Core.dll` in the game install directory. Run:
+1. Read the first line of `changelog.txt` in the game install directory. Run:
    ```
-   powershell.exe -ExecutionPolicy Bypass -Command "[System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $env:COI_ROOT 'Captain of Industry_Data\Managed\Mafi.Core.dll')).ProductVersion"
+   powershell.exe -ExecutionPolicy Bypass -Command "Get-Content (Join-Path $env:COI_ROOT 'changelog.txt') | Select-Object -First 1"
    ```
-   This returns a version like `0.8.2.0`. Strip the trailing `.0` to get `0.8.2`.
+   This returns a line like `v0.8.2c | 2026-03-23`. Strip the leading `v` and everything from ` | ` onward to get the canonical game version (e.g. `0.8.2c`). This includes hotfix letter suffixes when present.
 
-2. If `COI_ROOT` is not set or the DLL is not found, ask the user: "I couldn't read the game version from the install directory. What version of Captain of Industry are you running? (You can find this on the game's main menu.)"
+2. If `COI_ROOT` is not set or `changelog.txt` is not found, ask the user: "I couldn't read the game version from the install directory. What version of Captain of Industry are you running? (You can find this on the game's main menu.)"
 
 3. Read `manifest.json` and extract the `max_verified_game_version` value.
 
 4. Show the user a clear comparison:
-   - **Current game version:** (what you found)
-   - **Max verified version in manifest:** (what manifest.json says)
-   - **Match?** Yes / No
+   - **Current game version:** (what you found, e.g. `0.8.2c`)
+   - **Max verified version in manifest:** (what manifest.json says, e.g. `0.8.2`)
+   - **Match?** Yes / No -- note that `0.8.2c` vs `0.8.2` is a **No** (hotfix suffix differences count as a mismatch)
 
 5. Remember whether these versions match or differ -- you'll need this in Step 5.
 
@@ -124,7 +125,7 @@ Immediately after receiving the user's manual test feedback, pull the latest log
 
 1. Find the newest log file (the user just played, so there should be a fresh one):
    ```
-   powershell.exe -ExecutionPolicy Bypass -Command "Get-ChildItem '$env:APPDATA\Captain of Industry\Logs' -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { Write-Output $_.FullName }"
+   powershell.exe -ExecutionPolicy Bypass -Command "$logPath = Join-Path ([System.Environment]::GetFolderPath('ApplicationData')) 'Captain of Industry\Logs'; Get-ChildItem $logPath -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { Write-Output $_.FullName }"
    ```
 
 2. Read the log file and extract all lines containing `ResearchQueue:`.
@@ -175,8 +176,8 @@ If the versions differ and all checks passed:
 1. Tell the user: "The game version has changed and all compatibility checks passed. Let's update the mod to reflect the new verified version."
 
 2. List the two places that need updating:
-   - `manifest.json`: change `max_verified_game_version` from the old version to the new one
-   - `README.md` (compatibility table): change the `(X.Y.Z verified)` text to show the new version
+   - `manifest.json`: change `max_verified_game_version` from the old version to the new one, using the **full version string including any hotfix letter** (e.g. `"0.8.2c"` not `"0.8.2"`)
+   - `README.md` (compatibility table): change the `(X.Y.Z verified)` text to show the new version, including any hotfix letter (e.g. `(0.8.2c verified)`)
 
 3. Ask the user if they'd like to proceed with these updates.
 
