@@ -1,6 +1,6 @@
 {
 	"id": "ResearchQueue",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"display_name": "Research Queue",
 	"description_short": "Lets players manage their research queue.",
 	"primary_dlls": [ "ResearchQueue.dll" ],
