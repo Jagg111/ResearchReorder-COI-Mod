@@ -1,6 +1,6 @@
 {
 	"id": "ResearchQueue",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"display_name": "Research Queue",
 	"description_short": "Lets players manage their research queue.",
 	"primary_dlls": [ "ResearchQueue.dll" ],
@@ -10,5 +10,5 @@
 	"authors": [ "Jagg111" ],
 	"links": [],
 	"min_game_version": "0.8.0",
-	"max_verified_game_version": "0.8.3"
+	"max_verified_game_version": "0.8.3a"
 }

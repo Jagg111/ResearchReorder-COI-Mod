@@ -65,7 +65,7 @@ If you find this mod useful, consider starring the repo ⭐ - it helps others di
 
 | | |
 |---|---|
-| 🎮 **Game version** | Update 4+<br>(0.8.3 verified) |
+| 🎮 **Game version** | Update 4+<br>(0.8.3a verified) |
 | 💾 **Save compatible** | Yes |
 | 🛡️ **Safe to remove** | Yes |
 | 🤝 **Other mods** | No known conflicts |
