@@ -35,8 +35,10 @@ Without this mod, if you have a queue and want to start new research, your only 
 2. Extract the zip file
 3. Copy the **`ResearchQueue`** folder into your mods directory:
    ```
-   AppData\Roaming\Captain of Industry\Mods\
+   %APPDATA%\Captain of Industry\Mods\
    ```
+   *💡 Tip: press `Win + R`, paste the path above, and hit Enter to jump straight there.*
+
    Your Mods folder structure should look like this:
    ```
    Mods\ResearchQueue\
@@ -46,16 +48,6 @@ Without this mod, if you have a queue and want to start new research, your only 
 4. Launch the game, but **do NOT click Continue** - you don't get the option to enable mods there - **click Load**
 5. Click the **"Mods & DLCs"** button, enable the mod, then load your save.
 Once in-game, open the research tree and the queue panel will appear when no research nodes are selected.
-
-<details>
-<summary><strong>📁 Can't find your Mods folder?</strong></summary>
-
-Press `Win + R`, paste this path, and hit Enter:
-```
-%APPDATA%\Captain of Industry\Mods
-```
-
-</details>
 
 ## ⭐ Support
 

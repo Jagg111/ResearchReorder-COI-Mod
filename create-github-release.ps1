@@ -123,7 +123,7 @@ $emojiSparkles  = [char]::ConvertFromUtf32(0x2728)   # ✨
 $emojiWarning   = [char]::ConvertFromUtf32(0x26A0) + [char]::ConvertFromUtf32(0xFE0F)  # ⚠️
 $emojiPackage   = [char]::ConvertFromUtf32(0x1F4E6)  # 📦
 $emojiDownArrow = [char]::ConvertFromUtf32(0x2B07) + [char]::ConvertFromUtf32(0xFE0F)  # ⬇️
-$emojiFolder    = [char]::ConvertFromUtf32(0x1F4C1)  # 📁
+$emojiTip       = [char]::ConvertFromUtf32(0x1F4A1)  # 💡
 
 # --- What's New: clean commit messages with auto-linked issue references ---
 
@@ -207,8 +207,10 @@ $notes += @(
     "2. Extract the zip file",
     "3. Copy the **``ResearchQueue``** folder into your mods directory:",
     "   $backtick3",
-    "   AppData\Roaming\Captain of Industry\Mods\",
+    "   %APPDATA%\Captain of Industry\Mods\",
     "   $backtick3",
+    "   *$emojiTip Tip: press ``Win + R``, paste the path above, and hit Enter to jump straight there.*",
+    "",
     "   Your Mods folder structure should look like this:",
     "   $backtick3",
     "   Mods\ResearchQueue\",
@@ -218,16 +220,6 @@ $notes += @(
     "4. Launch the game, but **do NOT click Continue** - you don't get the option to enable mods there - **click Load**",
     "5. Click the **""Mods & DLCs""** button, enable the mod, then load your save.",
     "Once in-game, open the research tree and the queue panel will appear when no research nodes are selected.",
-    "",
-    "<details>",
-    "<summary><strong>$emojiFolder Can't find your Mods folder?</strong></summary>",
-    "",
-    "Press ``Win + R``, paste this path, and hit Enter:",
-    $backtick3,
-    "%APPDATA%\Captain of Industry\Mods",
-    $backtick3,
-    "",
-    "</details>",
     "",
     "---",
     "Got a bug or suggestion? [Join the discussions on GitHub]($repoUrl/discussions)"
